@@ -1,0 +1,42 @@
+{
+  "name": "humane-searcher",
+  "version": "1.0.2",
+  "description": "Searcher module for Humane Search",
+  "private": true,
+  "scripts": {
+    "lint": "eslint ./src/",
+    "clean": "rm -rf lib/",
+    "compile": "npm run lint && npm run clean && babel -d lib/ src/ && cp -R src/java/ lib/java",
+    "prepublish": "npm run compile"
+  },
+  "author": "Shailendra Sharma",
+  "license": "360fy Proprietary",
+  "dependencies": {
+    "agentkeepalive": "^2.0.3",
+    "bluebird": "^3.1.5",
+    "config": "^1.19.0",
+    "events": "^1.1.0",
+    "js-yaml": "^3.5.2",
+    "lodash": "^4.0.1",
+    "java": "^0.6.0",
+    "joi": "^7.2.2",
+    "md5": "^2.0.0",
+    "performance-now": "^0.2.0",
+    "request": "^2.69.0"
+  },
+  "devDependencies": {
+    "babel-core": "^6.4.5",
+    "babel-preset-node5": "^10.5.0",
+    "eslint": "^1.10.3",
+    "eslint-config-360fy": "https://private-npm-releases.s3.amazonaws.com/eslint-config-360fy-1.0.0.tgz",
+    "eslint-plugin-react": "^3.16.1"
+  },
+  "eslintConfig": {
+    "extends": "360fy"
+  },
+  "babel": {
+    "presets": [
+      "node5"
+    ]
+  }
+}
