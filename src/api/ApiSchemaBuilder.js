@@ -17,12 +17,12 @@ export default function (searchConfig) {
     //  .when('mode', {is: SEARCH_RESULT_MODE, then: Joi.required(), otherwise: Joi.optional()}),
     const searchSchema = _.extend({}, baseSchema, {
         mode: Joi.string().valid(Constants.VALID_MODES).default(Constants.ORGANIC_MODE).allow(null),
-        lang: Joi.string().allow(null).when('mode', {is: Constants.AUTOCOMPLETE_MODE, then: Joi.required(), otherwise: Joi.optional()}),
+        lang: Joi.string().allow(null).when('mode', {is: Constants.ENTITY_AUTOCOMPLETE_MODE, then: Joi.required(), otherwise: Joi.optional()}),
         type: Joi.string()
           .valid(_.keys(searchConfig.search.types))
           .default(searchConfig.search.defaultType)
           .allow(null)
-          .when('mode', {is: Constants.AUTOCOMPLETE_MODE, then: Joi.required(), otherwise: Joi.optional()}),
+          .when('mode', {is: Constants.ENTITY_AUTOCOMPLETE_MODE, then: Joi.required(), otherwise: Joi.optional()}),
         sort: Joi.object()
           .keys({
               field: Joi.string()

@@ -116,8 +116,8 @@ export default class Beacon {
 
     sendSearchResult(headers, queryData, queryLanguages, queryResult) {
         const eventProperties = {
-            item_ids: _.map(queryResult.results, result => result._id),
-            total_num_of_items: queryResult.totalResults
+            item_ids: _.map(queryResult && queryResult.results || [], result => result._id),
+            total_num_of_items: queryResult && queryResult.totalResults || 0
         };
 
         this.send(headers, SEARCH_RESULT_EVENT, _.assign(Beacon.searchQueryEventProperties(queryData, queryLanguages), eventProperties));

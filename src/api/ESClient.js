@@ -88,7 +88,7 @@ export default class ESClient {
           .then(query => {
               const uri = `/${query.index}/${query.type}/_search`;
 
-              console.log('Search: ', uri, JSON.stringify(query, null, 2));
+              console.log('Search: ', uri, JSON.stringify(query.search));
 
               return this.request({method: 'POST', uri, body: query.search})
                 .then(ESClient.processResponse);
@@ -98,7 +98,7 @@ export default class ESClient {
     explain(id, query) {
         const uri = `/${query.index}/${query.type}/${id}/_explain`;
 
-        console.log('Explain: ', uri, JSON.stringify(query.search, null, 2));
+        console.log('Explain: ', uri, JSON.stringify(query.search));
 
         return this.request({method: 'POST', uri, body: query.search}).then(ESClient.processResponse);
     }

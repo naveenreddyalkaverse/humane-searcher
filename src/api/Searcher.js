@@ -49,20 +49,27 @@ class SearcherInternal {
         return validationResult.value;
     }
 
-    wrapQuery(fieldConfig, query, boostMultiplier = this.searchConfig.matchTypeBoosts.exact) {
-        if (fieldConfig.filter) {
+    //noinspection JSMethodCanBeStatic
+    constantScoreQuery(fieldConfig, query, boostMultiplier, noWrapIntoConstantScore) {
+        if (noWrapIntoConstantScore) {
             return query;
         }
 
         const boost = (boostMultiplier || 1.0) * (fieldConfig.weight || 1.0);
 
-        if (fieldConfig.nestedPath) {
-            return {
-                constant_score: {query: {nested: {path: fieldConfig.nestedPath, query}}, boost}
-            };
+        return {constant_score: {query, boost}};
+    }
+
+    wrapQuery(fieldConfig, query, boostMultiplier = this.searchConfig.matchTypeBoosts.exact, noWrapIntoConstantScore) {
+        if (fieldConfig.filter) {
+            return query;
         }
 
-        return {constant_score: {query, boost: boostMultiplier || 1.0}};
+        if (fieldConfig.nestedPath) {
+            query = {nested: {path: fieldConfig.nestedPath, query}};
+        }
+
+        return this.constantScoreQuery(fieldConfig, query, boostMultiplier, noWrapIntoConstantScore);
     }
 
     matchQuery(fieldConfig, text, boostMultiplier, fuzziness = undefined, fieldName) {
@@ -90,40 +97,50 @@ class SearcherInternal {
         return this.matchQuery(fieldConfig, query, boostMultiplier, fuzziness, fieldName);
     }
 
-    fuzzyQueries(fieldConfig, query) {
+    fuzzyQueries(fieldConfig, text) {
         const field = fieldConfig.field;
 
-        return [
-            this.matchQuery(fieldConfig, query),
-            this.matchQuery(fieldConfig, query, this.searchConfig.matchTypeBoosts.edgeGram, 0, `${field}.edgeGram`),
+        const queries = [
+            this.matchQuery(fieldConfig, text),
 
-            {
+            this.matchQuery(fieldConfig, text, this.searchConfig.matchTypeBoosts.edgeGram, 0, `${field}.edgeGram`),
+
+            this.constantScoreQuery(fieldConfig, {
                 bool: {
                     should: [
-                        this.matchQuery(fieldConfig, query, this.searchConfig.matchTypeBoosts.phonetic, 0, `${field}.phonetic_soundex`),
-                        this.matchQuery(fieldConfig, query, this.searchConfig.matchTypeBoosts.phonetic, 0, `${field}.phonetic_dm`),
-                        this.matchQuery(fieldConfig, query, this.searchConfig.matchTypeBoosts.phonetic, 0, `${field}.phonetic_bm`)
+                        this.matchQuery(fieldConfig, text, this.searchConfig.matchTypeBoosts.phonetic, 0, `${field}.phonetic_soundex`, true),
+                        this.matchQuery(fieldConfig, text, this.searchConfig.matchTypeBoosts.phonetic, 0, `${field}.phonetic_dm`, true),
+                        this.matchQuery(fieldConfig, text, this.searchConfig.matchTypeBoosts.phonetic, 0, `${field}.phonetic_bm`, true)
                     ],
                     minimum_should_match: 2
                 }
-            },
+            }, this.searchConfig.matchTypeBoosts.phonetic),
 
-            {
+            this.constantScoreQuery(fieldConfig, {
                 bool: {
                     should: [
-                        this.matchQuery(fieldConfig, query, this.searchConfig.matchTypeBoosts.phoneticEdgeGram, 0, `${field}.phonetic_edgeGram_soundex`),
-                        this.matchQuery(fieldConfig, query, this.searchConfig.matchTypeBoosts.phoneticEdgeGram, 0, `${field}.phonetic_edgeGram_dm`),
-                        this.matchQuery(fieldConfig, query, this.searchConfig.matchTypeBoosts.phoneticEdgeGram, 0, `${field}.phonetic_edgeGram_bm`)
+                        this.matchQuery(fieldConfig, text, this.searchConfig.matchTypeBoosts.phoneticEdgeGram, 0, `${field}.phonetic_edgeGram_soundex`, true),
+                        this.matchQuery(fieldConfig, text, this.searchConfig.matchTypeBoosts.phoneticEdgeGram, 0, `${field}.phonetic_edgeGram_dm`, true),
+                        this.matchQuery(fieldConfig, text, this.searchConfig.matchTypeBoosts.phoneticEdgeGram, 0, `${field}.phonetic_edgeGram_bm`, true)
                     ],
                     minimum_should_match: 2
                 }
-            }
+            }, this.searchConfig.matchTypeBoosts.phonetic)
 
-            //SearcherInternal.matchQuery(field, query, 'AUTO', baseBoost * 4.0 * 1.20),
-            //SearcherInternal.matchQuery(`${field}.edgeGram`, query, 'AUTO', baseBoost * 4.0),
             //SearcherInternal.matchQuery(`${field}.phonetic_bm`, query, 'AUTO', baseBoost * 2.0 * 1.20),
             //SearcherInternal.matchQuery(`${field}.phonetic_edgeGram_bm`, query, 'AUTO', baseBoost * 2.0)
         ];
+
+        if (text && text.length >= 3 && text.length <= 4) {
+            queries.push(this.matchQuery(fieldConfig, text, this.searchConfig.matchTypeBoosts.exact_edit, 1));
+        }
+
+        if (text && text.length > 4 && text.length <= 7) {
+            queries.push(this.matchQuery(fieldConfig, text, this.searchConfig.matchTypeBoosts.exact_edit, 2));
+            queries.push(this.matchQuery(fieldConfig, text, this.searchConfig.matchTypeBoosts.edgeGram_edit, 1, `${field}.edgeGram`));
+        }
+
+        return queries;
     }
 
     buildFieldQuery(fieldConfig, englishTerm, vernacularTerm, queries) {
@@ -269,10 +286,10 @@ class SearcherInternal {
     buildSort(value, defaultSortOrder) {
         // array of string
         if (_.isString(value)) {
-            return {[value]: defaultSortOrder};
+            return {[value]: _.lowerCase(defaultSortOrder)};
         } else if (_.isObject(value)) {
             // array of sort objects
-            return {[value.field]: value.order || defaultSortOrder};
+            return {[value.field]: _.lowerCase(value.order || defaultSortOrder)};
         }
 
         return null;
