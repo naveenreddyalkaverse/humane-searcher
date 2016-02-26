@@ -1,12 +1,12 @@
 {
   "name": "humane-searcher",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Searcher module for Humane Search",
   "private": true,
   "scripts": {
     "lint": "eslint ./src/",
     "clean": "rm -rf lib/",
-    "compile": "npm run lint && npm run clean && babel -d lib/ src/ && cp -R src/java/ lib/java",
+    "compile": "npm run lint && npm run clean && babel -d lib/ src/",
     "prepublish": "npm run compile"
   },
   "author": "Shailendra Sharma",
@@ -16,10 +16,9 @@
     "bluebird": "^3.1.5",
     "config": "^1.19.0",
     "events": "^1.1.0",
+    "joi": "^7.2.2",
     "js-yaml": "^3.5.2",
     "lodash": "^4.0.1",
-    "java": "^0.6.0",
-    "joi": "^7.2.2",
     "md5": "^2.0.0",
     "performance-now": "^0.2.0",
     "request": "^2.69.0"

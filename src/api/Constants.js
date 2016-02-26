@@ -19,3 +19,6 @@ export const VALID_SORT_ORDERS = [ASC_SORT_ORDER, DESC_SORT_ORDER];
 
 export const SEARCH_API = 'search';
 export const AUTOCOMPLETE_API = 'autocomplete';
+
+export const SEARCH_EVENT = 'search';
+export const AUTOCOMPLETE_EVENT = 'autocomplete';

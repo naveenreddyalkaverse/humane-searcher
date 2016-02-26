@@ -2,11 +2,10 @@
 import _ from 'lodash';
 import Joi from 'joi';
 import Promise from 'bluebird';
+import {EventEmitter} from 'events';
 
-import Beacon from './Beacon';
 import ESClient from './ESClient';
 import LanguageDetector from './LanguageDetector';
-import Transliterator from './Transliterator';
 
 import * as Constants from './Constants';
 import buildApiSchema from './ApiSchemaBuilder';
@@ -19,9 +18,22 @@ class SearcherInternal {
         this.searchConfig = SearcherInternal.validateSearchConfig(searchConfig);
         this.apiSchema = buildApiSchema(searchConfig);
         this.esClient = new ESClient();
-        this.transliterator = new Transliterator();
+        this.transliterator = searchConfig.transliterator;
         this.languageDetector = new LanguageDetector();
-        this.beacon = new Beacon();
+
+        this.eventEmitter = new EventEmitter();
+
+        // todo: default registry of event handler for storing search queries in DB.
+
+        if (searchConfig.eventHandlers) {
+            _.forEach(searchConfig.eventHandlers, (handlerOrArray, eventName) => {
+                if (_.isArray(handlerOrArray)) {
+                    _.forEach(handlerOrArray, handler => this.eventEmitter.addListener(eventName, handler));
+                } else {
+                    this.eventEmitter.addListener(eventName, handlerOrArray);
+                }
+            });
+        }
     }
 
     // TODO: validate it through Joi
@@ -178,7 +190,7 @@ class SearcherInternal {
 
         let englishTerm = term;
         let vernacularTerm = null;
-        if (!(!languages || languages.length === 1 && languages[0].code === 'en')) {
+        if (!(!languages || languages.length === 1 && languages[0].code === 'en') && this.transliterator) {
             // it's vernacular
             vernacularTerm = term;
             englishTerm = this.transliterator.transliterate(vernacularTerm);
@@ -435,6 +447,8 @@ class SearcherInternal {
     autocomplete(headers, input) {
         const validatedInput = SearcherInternal.validateInput(input, this.apiSchema.autocomplete);
 
+        let queryLanguages = null;
+
         return this.analyzeInput(input.text)
           .then((response) => response && response.tokens && _.map(response.tokens, token => token.token))
           .then((tokens) => {
@@ -444,7 +458,8 @@ class SearcherInternal {
 
               if (!validatedInput.type || validatedInput.type === '*') {
                   const searchQueries = _(this.searchConfig.autocomplete.types).values().map(typeConfig => this.searchQuery(typeConfig, input, tokens)).value();
-                  return this.esClient.multiSearch(searchQueries);
+
+                  return Promise.all(searchQueries);
               }
 
               const autocompleteTypeConfig = this.searchConfig.autocomplete.types[validatedInput.type];
@@ -452,10 +467,30 @@ class SearcherInternal {
                   throw new ValidationError(`No autocomplete type config found for: ${validatedInput.type}`);
               }
 
-              // single type of autocomplete may not work...
-              return this.esClient.search(this.searchQuery(autocompleteTypeConfig, input, tokens));
+              return this.searchQuery(autocompleteTypeConfig, input, tokens);
           })
-          .then((response) => this.processAutocompleteResponse(response));
+          .then(queryOrArray => {
+              if (_.isArray(queryOrArray)) {
+                  queryLanguages = _.head(queryOrArray).queryLanguages;
+              } else {
+                  queryLanguages = queryOrArray.queryLanguages;
+              }
+
+              return queryOrArray;
+          })
+          .then(queryOrArray => {
+              if (_.isArray(queryOrArray)) {
+                  return this.esClient.multiSearch(queryOrArray);
+              }
+
+              return this.esClient.search(queryOrArray);
+          })
+          .then((response) => this.processAutocompleteResponse(response))
+          .then(result => {
+              this.eventEmitter.emit(Constants.AUTOCOMPLETE_EVENT, {headers, queryData: input, queryLanguages, result});
+
+              return result;
+          });
     }
 
     static processSearchResponse(response) {
@@ -484,16 +519,12 @@ class SearcherInternal {
           .then(query => {
               queryLanguages = query.queryLanguages;
 
-              //'send beacon'
-              this.beacon.sendSearchQuery(headers, input, queryLanguages);
-
               return query;
           })
           .then(query => this.esClient.search(query))
           .then(SearcherInternal.processSearchResponse)
           .then(result => {
-              //'send beacon'
-              this.beacon.sendSearchResult(headers, input, queryLanguages, result);
+              this.eventEmitter.emit(Constants.SEARCH_EVENT, {headers, queryData: input, queryLanguages, result});
 
               return result;
           });
