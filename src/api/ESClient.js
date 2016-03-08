@@ -1,27 +1,21 @@
 import _ from 'lodash';
-import Config from 'config';
 import Agent from 'agentkeepalive';
 import Promise from 'bluebird';
 import Request from 'request';
 
-const ESConfig = Config.get('ES');
-const Url = ESConfig.url;
-
-//const logLevel = config.has('ES.logLevel') ? config.get('ES.logLevel') : 'info';
-
 export default class ESClient {
-    constructor() {
+    constructor(config) {
         const keepAliveAgent = new Agent({
-            maxSockets: ESConfig.maxSockets || 10,
-            maxFreeSockets: ESConfig.maxFreeSockets || 5,
-            timeout: ESConfig.timeout || 60000,
-            keepAliveTimeout: ESConfig.keepAliveTimeout || 30000
+            maxSockets: config.esConfig && config.esConfig.maxSockets || 10,
+            maxFreeSockets: config.esConfig && config.esConfig.maxFreeSockets || 5,
+            timeout: config.esConfig && config.esConfig.timeout || 60000,
+            keepAliveTimeout: config.esConfig && config.esConfig.keepAliveTimeout || 30000
         });
 
         this.request = Promise.promisify(Request.defaults({
             json: true,
             agent: keepAliveAgent,
-            baseUrl: Url,
+            baseUrl: `${config.esConfig && config.esConfig.url || 'http://localhost:9200'}`,
             gzip: true
         }));
     }
@@ -113,7 +107,7 @@ export default class ESClient {
         return Promise.all(queriesOrPromise)
           .then((queries) => {
               const bulkQuery = ESClient.bulkFormat(queries);
-              return this.request({method: 'POST', uri: `/_msearch`, body: bulkQuery, json: false})
+              return this.request({method: 'POST', uri: '/_msearch', body: bulkQuery, json: false})
                 .then(ESClient.processResponse)
                 .then((response) => !!response ? JSON.parse(response) : null);
           });

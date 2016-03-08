@@ -32,7 +32,10 @@ const Languages = [
 const LanguageMap = (function () {
     const map = {};
 
-    _.forEach(Languages, (lang) => map[lang.code] = {code: lang.code, name: lang.name, unicode: lang.unicode});
+    _.forEach(Languages, lang => {
+        map[lang.code] = {code: lang.code, name: lang.name, unicode: lang.unicode};
+        return true;
+    });
 
     return map;
 }());

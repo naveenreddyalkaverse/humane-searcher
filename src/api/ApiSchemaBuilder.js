@@ -17,12 +17,8 @@ export default function (searchConfig) {
     //  .when('mode', {is: SEARCH_RESULT_MODE, then: Joi.required(), otherwise: Joi.optional()}),
     const searchSchema = _.extend({}, baseSchema, {
         mode: Joi.string().valid(Constants.VALID_MODES).default(Constants.ORGANIC_MODE).allow(null),
-        lang: Joi.string().allow(null).when('mode', {is: Constants.ENTITY_AUTOCOMPLETE_MODE, then: Joi.required(), otherwise: Joi.optional()}),
-        type: Joi.string()
-          .valid(_.keys(searchConfig.search.types))
-          .default(searchConfig.search.defaultType)
-          .allow(null)
-          .when('mode', {is: Constants.ENTITY_AUTOCOMPLETE_MODE, then: Joi.required(), otherwise: Joi.optional()}),
+        lang: Joi.string().allow(null),
+        type: Joi.string().valid(_.keys(searchConfig.search.types)).default(searchConfig.search.defaultType).allow([null, '*']),
         sort: Joi.object()
           .keys({
               field: Joi.string()
@@ -36,7 +32,7 @@ export default function (searchConfig) {
           })
           .unknown(true)
           .required(),
-        unicodeText: Joi.string().allow(null).optional(),
+        unicodeText: Joi.string().allow([null, '']).optional(),
         originalInput: Joi.string().min(1).allow(null)
     });
 

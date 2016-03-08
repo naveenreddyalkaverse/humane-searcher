@@ -1,6 +1,6 @@
 {
   "name": "humane-searcher",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Searcher module for Humane Search",
   "private": true,
   "scripts": {
@@ -13,22 +13,22 @@
   "license": "360fy Proprietary",
   "dependencies": {
     "agentkeepalive": "^2.0.3",
-    "bluebird": "^3.1.5",
+    "bluebird": "^3.3.4",
     "config": "^1.19.0",
     "events": "^1.1.0",
-    "joi": "^7.2.2",
-    "js-yaml": "^3.5.2",
-    "lodash": "^4.0.1",
+    "joi": "^8.0.4",
+    "js-yaml": "^3.5.3",
+    "lodash": "^4.6.1",
     "md5": "^2.0.0",
     "performance-now": "^0.2.0",
     "request": "^2.69.0"
   },
   "devDependencies": {
-    "babel-core": "^6.4.5",
-    "babel-preset-node5": "^10.5.0",
-    "eslint": "^1.10.3",
-    "eslint-config-360fy": "https://private-npm-releases.s3.amazonaws.com/eslint-config-360fy-1.0.0.tgz",
-    "eslint-plugin-react": "^3.16.1"
+    "babel-core": "^6.6.5",
+    "babel-preset-node5": "^10.8.0",
+    "eslint": "^2.3.0",
+    "eslint-config-360fy": "https://private-npm-releases.s3.amazonaws.com/eslint-config-360fy-1.0.1.tgz",
+    "eslint-plugin-react": "^4.2.0"
   },
   "eslintConfig": {
     "extends": "360fy"

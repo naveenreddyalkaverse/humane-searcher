@@ -13,20 +13,20 @@ import buildApiSchema from './ApiSchemaBuilder';
 import ValidationError from './ValidationError';
 
 class SearcherInternal {
-    constructor(searchConfig) {
+    constructor(config) {
         // TODO: compile config, so searcher logic has lesser checks, extend search config with default configs
-        this.searchConfig = SearcherInternal.validateSearchConfig(searchConfig);
-        this.apiSchema = buildApiSchema(searchConfig);
-        this.esClient = new ESClient();
-        this.transliterator = searchConfig.transliterator;
+        this.searchConfig = SearcherInternal.validateSearchConfig(config.searchConfig);
+        this.apiSchema = buildApiSchema(config.searchConfig);
+        this.esClient = new ESClient({esConfig: config.esConfig});
+        this.transliterator = config.searchConfig.transliterator;
         this.languageDetector = new LanguageDetector();
 
         this.eventEmitter = new EventEmitter();
 
         // todo: default registry of event handler for storing search queries in DB.
 
-        if (searchConfig.eventHandlers) {
-            _.forEach(searchConfig.eventHandlers, (handlerOrArray, eventName) => {
+        if (config.searchConfig.eventHandlers) {
+            _.forEach(config.searchConfig.eventHandlers, (handlerOrArray, eventName) => {
                 if (_.isArray(handlerOrArray)) {
                     _.forEach(handlerOrArray, handler => this.eventEmitter.addListener(eventName, handler));
                 } else {
@@ -237,6 +237,8 @@ class SearcherInternal {
 
                 this.buildFieldQuery(_.extend({filter: true}, filterConfigs[key]), filterValue, null, filterQueries);
             }
+
+            return true;
         });
 
         if (input.lang && !_.isEmpty(input.lang)) {
@@ -288,6 +290,8 @@ class SearcherInternal {
 
                 postFilters.push(filterConfig.filter);
             }
+
+            return true;
         });
 
         return postFilters;
@@ -344,12 +348,14 @@ class SearcherInternal {
 
         // pick default from sort config
         if (_.isArray(sortConfigs)) {
-            _.map(sortConfigs, config => this.buildDefaultSort(config, defaultSortOrder));
-        } else {
-            if (_.isObject(sortConfigs)) {
-                return this.buildDefaultSort(sortConfigs, defaultSortOrder);
-            }
+            return _(sortConfigs).map(config => this.buildDefaultSort(config, defaultSortOrder)).filter(config => !!config).value();
         }
+
+        if (_.isObject(sortConfigs)) {
+            return this.buildDefaultSort(sortConfigs, defaultSortOrder);
+        }
+
+        return undefined;
     }
 
     analyzeInput(text) {
@@ -369,7 +375,9 @@ class SearcherInternal {
               _.forEach(parts, part => {
                   if (part.language) {
                       if (_.isArray(part.language)) {
-                          _.forEach(part.language, lang => queryLanguages[lang] = true);
+                          _.forEach(part.language, lang => {
+                              queryLanguages[lang] = true;
+                          });
                       } else {
                           queryLanguages[part.language] = true;
                       }
@@ -395,13 +403,18 @@ class SearcherInternal {
 
               const indexTypeConfig = searchTypeConfig.indexType;
 
+              let sort = this.sortPart(searchTypeConfig, input) || undefined;
+              if (sort && _.isEmpty(sort)) {
+                  sort = undefined;
+              }
+
               return {
                   index: indexTypeConfig.index,
                   type: indexTypeConfig.type,
                   search: {
                       from: (input.page || 0) * (input.count || 0),
                       size: input.count || undefined,
-                      sort: this.sortPart(searchTypeConfig, input) || undefined,
+                      sort,
                       query: {
                           function_score: {
                               query: {
@@ -420,12 +433,15 @@ class SearcherInternal {
           });
     }
 
-    processAutocompleteResponse(responses) {
+    // TODO: handle case of merging results in one single group
+    processMultipleSearchResponse(responses) {
         if (!responses) {
             return null;
         }
 
         const result = {
+            multi: true,
+            totalResults: 0,
             results: {}
         };
 
@@ -435,8 +451,20 @@ class SearcherInternal {
             if (response.hits && response.hits.hits) {
                 _.forEach(response.hits.hits, hit => {
                     const typeConfig = this.searchConfig.types[hit._type];
-                    const shortName = !!typeConfig ? typeConfig.name || typeConfig.type : hit._type;
-                    (result.results[shortName] || (result.results[shortName] = [])).push(_.extend(hit._source, {_id: hit._id, _score: hit._score, _type: hit._type}));
+                    const name = !!typeConfig ? typeConfig.name || typeConfig.type : hit._type;
+
+                    let resultGroup = result.results[name];
+                    if (!resultGroup) {
+                        resultGroup = result.results[name] = {
+                            results: [],
+                            totalResults: response.hits.total || 0,
+                            name,
+                            type: hit._type
+                        };
+                        result.totalResults += resultGroup.totalResults;
+                    }
+
+                    resultGroup.results.push(_.extend(hit._source, {_id: hit._id, _score: hit._score, _type: hit._type}));
                 });
             }
         });
@@ -444,10 +472,25 @@ class SearcherInternal {
         return result;
     }
 
-    autocomplete(headers, input) {
-        const validatedInput = SearcherInternal.validateInput(input, this.apiSchema.autocomplete);
+    processSingleSearchResponse(response) {
+        if (!response) {
+            return null;
+        }
 
+        // TODO: populate name too here
+
+        return {
+            queryTimeTaken: response.took,
+            totalResults: response.hits && response.hits.total || 0,
+            type: response.hits && response.hits.hits && response.hits.hits.length > 0 && response.hits.hits[0]._type,
+            results: response.hits && _.map(response.hits.hits, (hit) => _.extend(hit._source, {_id: hit._id, _score: hit._score, _type: hit._type})) || []
+        };
+    }
+
+    _searchInternal(headers, input, searchTypeConfigs, eventName) {
         let queryLanguages = null;
+
+        let multiSearch = false;
 
         return this.analyzeInput(input.text)
           .then((response) => response && response.tokens && _.map(response.tokens, token => token.token))
@@ -456,21 +499,23 @@ class SearcherInternal {
                   return null;
               }
 
-              if (!validatedInput.type || validatedInput.type === '*') {
-                  const searchQueries = _(this.searchConfig.autocomplete.types).values().map(typeConfig => this.searchQuery(typeConfig, input, tokens)).value();
+              if (!input.type || input.type === '*') {
+                  const searchQueries = _(searchTypeConfigs).values().map(typeConfig => this.searchQuery(typeConfig, input, tokens)).value();
+
+                  multiSearch = _.isArray(searchQueries) || false;
 
                   return Promise.all(searchQueries);
               }
 
-              const autocompleteTypeConfig = this.searchConfig.autocomplete.types[validatedInput.type];
-              if (!autocompleteTypeConfig) {
-                  throw new ValidationError(`No autocomplete type config found for: ${validatedInput.type}`);
+              const searchTypeConfig = searchTypeConfigs[input.type];
+              if (!searchTypeConfig) {
+                  throw new ValidationError(`No type config found for: ${input.type}`);
               }
 
-              return this.searchQuery(autocompleteTypeConfig, input, tokens);
+              return this.searchQuery(searchTypeConfig, input, tokens);
           })
           .then(queryOrArray => {
-              if (_.isArray(queryOrArray)) {
+              if (multiSearch) {
                   queryLanguages = _.head(queryOrArray).queryLanguages;
               } else {
                   queryLanguages = queryOrArray.queryLanguages;
@@ -478,56 +523,25 @@ class SearcherInternal {
 
               return queryOrArray;
           })
-          .then(queryOrArray => {
-              if (_.isArray(queryOrArray)) {
-                  return this.esClient.multiSearch(queryOrArray);
-              }
-
-              return this.esClient.search(queryOrArray);
-          })
-          .then((response) => this.processAutocompleteResponse(response))
+          .then(queryOrArray => multiSearch ? this.esClient.multiSearch(queryOrArray) : this.esClient.search(queryOrArray))
+          .then((response) => multiSearch ? this.processMultipleSearchResponse(response) : this.processSingleSearchResponse(response))
           .then(result => {
-              this.eventEmitter.emit(Constants.AUTOCOMPLETE_EVENT, {headers, queryData: input, queryLanguages, result});
+              this.eventEmitter.emit(eventName, {headers, queryData: input, queryLanguages, queryResult: result});
 
               return result;
           });
     }
 
-    static processSearchResponse(response) {
-        if (!response) {
-            return null;
-        }
+    autocomplete(headers, input) {
+        const validatedInput = SearcherInternal.validateInput(input, this.apiSchema.autocomplete);
 
-        return {
-            queryTimeTaken: response.took,
-            totalResults: response.hits && response.hits.total || 0,
-            results: response.hits && _.map(response.hits.hits, (hit) => _.extend(hit._source, {_id: hit._id, _score: hit._score, _type: hit._type})) || []
-        };
+        return this._searchInternal(headers, validatedInput, this.searchConfig.autocomplete.types, Constants.AUTOCOMPLETE_EVENT);
     }
 
     search(headers, input) {
         const validatedInput = SearcherInternal.validateInput(input, this.apiSchema.search);
 
-        let queryLanguages = null;
-
-        const searchTypeConfig = this.searchConfig.search.types[validatedInput.type];
-        if (!searchTypeConfig) {
-            throw new ValidationError(`No search type config found for: ${validatedInput.type}`);
-        }
-
-        return Promise.resolve(this.searchQuery(searchTypeConfig, validatedInput))
-          .then(query => {
-              queryLanguages = query.queryLanguages;
-
-              return query;
-          })
-          .then(query => this.esClient.search(query))
-          .then(SearcherInternal.processSearchResponse)
-          .then(result => {
-              this.eventEmitter.emit(Constants.SEARCH_EVENT, {headers, queryData: input, queryLanguages, result});
-
-              return result;
-          });
+        return this._searchInternal(headers, validatedInput, this.searchConfig.search.types, Constants.SEARCH_EVENT);
     }
 
     _explain(api, input) {
