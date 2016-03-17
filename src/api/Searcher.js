@@ -17,8 +17,8 @@ class SearcherInternal {
         // TODO: compile config, so searcher logic has lesser checks, extend search config with default configs
         this.searchConfig = SearcherInternal.validateSearchConfig(config.searchConfig);
         this.apiSchema = buildApiSchema(config.searchConfig);
-        this.esClient = new ESClient({esConfig: config.esConfig});
-        this.transliterator = config.searchConfig.transliterator;
+        this.esClient = new ESClient(_.pick(config, ['esConfig', 'redisConfig', 'redisSentinelConfig']));
+        this.transliterator = config.transliterator;
         this.languageDetector = new LanguageDetector();
 
         this.eventEmitter = new EventEmitter();
@@ -433,7 +433,6 @@ class SearcherInternal {
           });
     }
 
-    // TODO: handle case of merging results in one single group
     processMultipleSearchResponse(responses) {
         if (!responses) {
             return null;
@@ -464,7 +463,7 @@ class SearcherInternal {
                         result.totalResults += resultGroup.totalResults;
                     }
 
-                    resultGroup.results.push(_.extend(hit._source, {_id: hit._id, _score: hit._score, _type: hit._type}));
+                    resultGroup.results.push(_.extend(hit._source, {_id: hit._id, _score: hit._score, _type: hit._type, _name: name}));
                 });
             }
         });
@@ -477,13 +476,16 @@ class SearcherInternal {
             return null;
         }
 
-        // TODO: populate name too here
+        const type = response.hits && response.hits.hits && response.hits.hits.length > 0 && response.hits.hits[0]._type;
+        const typeConfig = this.searchConfig.types[type];
+        const name = !!typeConfig ? typeConfig.name || typeConfig.type : type;
 
         return {
             queryTimeTaken: response.took,
             totalResults: response.hits && response.hits.total || 0,
-            type: response.hits && response.hits.hits && response.hits.hits.length > 0 && response.hits.hits[0]._type,
-            results: response.hits && _.map(response.hits.hits, (hit) => _.extend(hit._source, {_id: hit._id, _score: hit._score, _type: hit._type})) || []
+            type,
+            name,
+            results: response.hits && _.map(response.hits.hits, (hit) => _.extend(hit._source, {_id: hit._id, _score: hit._score, _type: hit._type, _name: name})) || []
         };
     }
 
@@ -525,10 +527,10 @@ class SearcherInternal {
           })
           .then(queryOrArray => multiSearch ? this.esClient.multiSearch(queryOrArray) : this.esClient.search(queryOrArray))
           .then((response) => multiSearch ? this.processMultipleSearchResponse(response) : this.processSingleSearchResponse(response))
-          .then(result => {
-              this.eventEmitter.emit(eventName, {headers, queryData: input, queryLanguages, queryResult: result});
+          .then(response => {
+              this.eventEmitter.emit(eventName, {headers, queryData: input, queryLanguages, queryResult: response});
 
-              return result;
+              return response;
           });
     }
 
@@ -542,6 +544,59 @@ class SearcherInternal {
         const validatedInput = SearcherInternal.validateInput(input, this.apiSchema.search);
 
         return this._searchInternal(headers, validatedInput, this.searchConfig.search.types, Constants.SEARCH_EVENT);
+    }
+
+    suggestedQueries(headers, input) {
+        // same type as autocomplete
+        const validatedInput = SearcherInternal.validateInput(input, this.apiSchema.autocomplete);
+
+        return this._searchInternal(headers, validatedInput, this.searchConfig.autocomplete.types, Constants.SUGGESTED_QUERIES_EVENT)
+          .then(response => {
+              // merge
+              if (response.multi) {
+                  // calculate scores
+                  const relevancyScores = [];
+                  _.forEach(response.results, resultGroup => {
+                      _.forEach(resultGroup.results, result => {
+                          result._relevancyScore = result._score / (result.weight || 1.0);
+                          relevancyScores.push(result._relevancyScore);
+                      });
+                  });
+
+                  // order scores in descending order
+                  relevancyScores.sort((scoreA, scoreB) => scoreB - scoreA);
+
+                  // find deflection point
+                  let previousScore = 0;
+                  let deflectionScore = 0;
+                  _.forEach(relevancyScores, score => {
+                      if (previousScore && score < 0.5 * previousScore) {
+                          deflectionScore = previousScore;
+                          return false;
+                      }
+
+                      previousScore = score;
+
+                      return true;
+                  });
+
+                  // consider items till the deflection point
+                  const results = [];
+                  _.forEach(response.results, resultGroup => {
+                      _.forEach(resultGroup.results, result => {
+                          if (result._relevancyScore >= deflectionScore) {
+                              results.push(result);
+                          }
+                      });
+                  });
+
+                  results.sort((resultA, resultB) => resultB._score - resultA._score);
+
+                  response.results = results;
+              }
+
+              return response;
+          });
     }
 
     _explain(api, input) {
@@ -634,6 +689,10 @@ export default class Searcher {
         return this.internal.autocomplete(headers, request);
     }
 
+    suggestedQueries(headers, request) {
+        return this.internal.suggestedQueries(headers, request);
+    }
+
     explainAutocomplete(headers, request) {
         return this.internal.explainAutocomplete(headers, request);
     }
@@ -659,6 +718,10 @@ export default class Searcher {
             search: [
                 {handler: this.search},
                 {handler: this.search, method: 'get'}
+            ],
+            suggestedQueries: [
+                {handler: this.suggestedQueries},
+                {handler: this.suggestedQueries, method: 'get'}
             ],
             'explain/search': [
                 {handler: this.explainSearch},

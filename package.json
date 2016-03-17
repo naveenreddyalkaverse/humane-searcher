@@ -1,6 +1,6 @@
 {
   "name": "humane-searcher",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Searcher module for Humane Search",
   "private": true,
   "scripts": {
@@ -10,30 +10,37 @@
     "prepublish": "npm run compile"
   },
   "author": "Shailendra Sharma",
-  "license": "360fy Proprietary",
+  "license": "MIT",
   "dependencies": {
-    "agentkeepalive": "^2.0.3",
+    "agentkeepalive": "^2.0.5",
     "bluebird": "^3.3.4",
-    "config": "^1.19.0",
+    "eslint-config-360fy": "https://private-npm-releases.s3.amazonaws.com/eslint-config-360fy-1.0.1.tgz",
     "events": "^1.1.0",
+    "hiredis": "^0.4.1",
     "joi": "^8.0.4",
-    "js-yaml": "^3.5.3",
+    "js-yaml": "^3.5.5",
     "lodash": "^4.6.1",
-    "md5": "^2.0.0",
+    "md5": "^2.1.0",
     "performance-now": "^0.2.0",
+    "redis": "^2.5.2",
+    "redis-sentinel": "^0.3.3",
     "request": "^2.69.0"
   },
   "devDependencies": {
-    "babel-core": "^6.6.5",
-    "babel-preset-node5": "^10.8.0",
-    "eslint": "^2.3.0",
+    "babel-core": "^6.7.2",
+    "babel-plugin-transform-runtime": "^6.6.0",
+    "babel-preset-node5": "^11.0.0",
+    "eslint": "^2.4.0",
     "eslint-config-360fy": "https://private-npm-releases.s3.amazonaws.com/eslint-config-360fy-1.0.1.tgz",
-    "eslint-plugin-react": "^4.2.0"
+    "eslint-plugin-react": "^4.2.3"
   },
   "eslintConfig": {
     "extends": "360fy"
   },
   "babel": {
+    "plugins": [
+      "transform-runtime"
+    ],
     "presets": [
       "node5"
     ]

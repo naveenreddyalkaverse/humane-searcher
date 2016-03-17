@@ -3,6 +3,11 @@ import Agent from 'agentkeepalive';
 import Promise from 'bluebird';
 import Request from 'request';
 
+import md5 from 'md5';
+import performanceNow from 'performance-now';
+
+import redisClient from './RedisClient';
+
 export default class ESClient {
     constructor(config) {
         const keepAliveAgent = new Agent({
@@ -18,6 +23,24 @@ export default class ESClient {
             baseUrl: `${config.esConfig && config.esConfig.url || 'http://localhost:9200'}`,
             gzip: true
         }));
+
+        this.redisClient = redisClient(_.pick(config, ['redisConfig', 'redisSentinelConfig']));
+    }
+
+    storeInCache(key, data) {
+        // TODO: pack data with MessagePack
+        return this.redisClient.setAsync(key, JSON.stringify(data))
+          .then(() => data);
+    }
+
+    retrieveFromCache(key) {
+        // TODO: pack data with MessagePack
+        return this.redisClient.getAsync(key)
+          .then((data) => !!data ? JSON.parse(data) : null);
+    }
+
+    removeFromCache(key) {
+        return this.redisClient.delAsync(key);
     }
 
     static processResponse(response) {
@@ -78,21 +101,44 @@ export default class ESClient {
     }
 
     search(queryOrPromise) {
+        const startTime = performanceNow();
+
         return Promise.resolve(queryOrPromise)
           .then(query => {
               const uri = `/${query.index}/${query.type}/_search`;
 
-              console.log('Search: ', uri, JSON.stringify(query.search));
+              //console.log('Search: ', uri, JSON.stringify(query.search));
 
-              return this.request({method: 'POST', uri, body: query.search})
-                .then(ESClient.processResponse);
+              const queryKey = md5(JSON.stringify(query.search));
+              const cacheKey = `${uri}:${queryKey}`;
+
+              return this.retrieveFromCache(cacheKey)
+                .then(cacheResponse => {
+                    if (cacheResponse) {
+                        cacheResponse.took = _.round(performanceNow() - startTime, 3);
+
+                        console.log('search: Retrieved from cache in (ms): ', cacheResponse.took);
+
+                        return cacheResponse;
+                    }
+
+                    return this.request({method: 'POST', uri, body: query.search})
+                      .then(ESClient.processResponse)
+                      .then(queryResponse => {
+                          if (queryResponse) {
+                              return this.storeInCache(cacheKey, queryResponse);
+                          }
+
+                          return null;
+                      });
+                });
           });
     }
 
     explain(id, query) {
         const uri = `/${query.index}/${query.type}/${id}/_explain`;
 
-        console.log('Explain: ', uri, JSON.stringify(query.search));
+        //console.log('Explain: ', uri, JSON.stringify(query.search));
 
         return this.request({method: 'POST', uri, body: query.search}).then(ESClient.processResponse);
     }
@@ -104,12 +150,43 @@ export default class ESClient {
     }
 
     multiSearch(queriesOrPromise) {
+        const startTime = performanceNow();
+
         return Promise.all(queriesOrPromise)
           .then((queries) => {
+              const uri = '/_msearch';
               const bulkQuery = ESClient.bulkFormat(queries);
-              return this.request({method: 'POST', uri: '/_msearch', body: bulkQuery, json: false})
-                .then(ESClient.processResponse)
-                .then((response) => !!response ? JSON.parse(response) : null);
+
+              const queryKey = md5(bulkQuery);
+              const cacheKey = `${uri}:${queryKey}`;
+
+              return this.retrieveFromCache(cacheKey)
+                .then(cacheResponse => {
+                    if (cacheResponse) {
+                        cacheResponse.took = _.round(performanceNow() - startTime, 3);
+
+                        if (cacheResponse.responses) {
+                            // set response times
+                            _.forEach(cacheResponse.responses, response => {
+                                response.took = cacheResponse.took;
+                            });
+                        }
+
+                        console.log('multiSearch: Retrieved from cache in (ms): ', cacheResponse.took);
+                        return cacheResponse;
+                    }
+
+                    return this.request({method: 'POST', uri, body: bulkQuery, json: false})
+                      .then(ESClient.processResponse)
+                      .then((response) => !!response ? JSON.parse(response) : null)
+                      .then(queryResponse => {
+                          if (queryResponse) {
+                              return this.storeInCache(cacheKey, queryResponse);
+                          }
+
+                          return null;
+                      });
+                });
           });
     }
 

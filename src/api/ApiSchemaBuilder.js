@@ -37,14 +37,14 @@ export default function (searchConfig) {
     });
 
     const autocompleteSchema = _.extend({}, baseSchema, {
-        type: Joi.string().valid(_.keys(searchConfig.autocomplete.types)).default(searchConfig.autocomplete.defaultType).allow(null),
+        type: Joi.string().valid(_.keys(searchConfig.autocomplete.types)).default(searchConfig.autocomplete.defaultType).allow([null, '*']),
         filter: Joi.object()// todo: these are contextual to user and type and autocomplete vs search
           .keys({
               lang: Joi.object().keys({primary: Joi.string().required(), secondary: Joi.array().items(Joi.string()).allow(null).optional()}).required()
           })
           .unknown(true)
           .required(),
-        count: Joi.number().default(2)
+        count: Joi.number().default(5)
     });
 
     const termVectorsSchema = {

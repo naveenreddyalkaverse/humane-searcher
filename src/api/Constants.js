@@ -22,3 +22,4 @@ export const AUTOCOMPLETE_API = 'autocomplete';
 
 export const SEARCH_EVENT = 'search';
 export const AUTOCOMPLETE_EVENT = 'autocomplete';
+export const SUGGESTED_QUERIES_EVENT = 'suggested_queries';
