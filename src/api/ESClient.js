@@ -1,46 +1,48 @@
 import _ from 'lodash';
-import Agent from 'agentkeepalive';
 import Promise from 'bluebird';
-import Request from 'request';
 
 import md5 from 'md5';
 import performanceNow from 'performance-now';
 
-import redisClient from './RedisClient';
+import buildRedisClient from 'humane-node-commons/lib/RedisClient';
+import buildRequest from 'humane-node-commons/lib/Request';
+
+import InternalServiceError from 'humane-node-commons/lib/InternalServiceError';
 
 export default class ESClient {
     constructor(config) {
-        const keepAliveAgent = new Agent({
-            maxSockets: config.esConfig && config.esConfig.maxSockets || 10,
-            maxFreeSockets: config.esConfig && config.esConfig.maxFreeSockets || 5,
-            timeout: config.esConfig && config.esConfig.timeout || 60000,
-            keepAliveTimeout: config.esConfig && config.esConfig.keepAliveTimeout || 30000
-        });
+        this.request = buildRequest(_.extend({}, config.esConfig, {logLevel: config.logLevel, baseUrl: config.esConfig && config.esConfig.url || 'http://localhost:9200'}));
 
-        this.request = Promise.promisify(Request.defaults({
-            json: true,
-            agent: keepAliveAgent,
-            baseUrl: `${config.esConfig && config.esConfig.url || 'http://localhost:9200'}`,
-            gzip: true
-        }));
-
-        this.redisClient = redisClient(_.pick(config, ['redisConfig', 'redisSentinelConfig']));
+        this.redisClient = buildRedisClient(_.pick(config, ['redisConfig', 'redisSentinelConfig']));
     }
 
+    // throw new InternalServiceError('Internal Service Error', {code: 'INTERNAL_SERVICE_ERROR', details: response.body && response.body.error || response.body});
     storeInCache(key, data) {
-        // TODO: pack data with MessagePack
+        // nice to have: pack data with MessagePack
         return this.redisClient.setAsync(key, JSON.stringify(data))
-          .then(() => data);
+          .then(() => data)
+          .catch(() => {
+              console.error('REDIS_ERROR: Error in storing key: ', key);
+              return null;
+          }); // eat the error
     }
 
     retrieveFromCache(key) {
-        // TODO: pack data with MessagePack
+        // nice to have: pack data with MessagePack
         return this.redisClient.getAsync(key)
-          .then((data) => !!data ? JSON.parse(data) : null);
+          .then((data) => !!data ? JSON.parse(data) : null)
+          .catch(() => {
+              console.error('REDIS_ERROR: Error in retrieving key: ', key);
+              return null;
+          }); // eat the error
     }
 
     removeFromCache(key) {
-        return this.redisClient.delAsync(key);
+        return this.redisClient.delAsync(key)
+          .catch(() => {
+              console.error('REDIS_ERROR: Error in removing key: ', key);
+              return null;
+          }); // eat the error
     }
 
     static processResponse(response) {
@@ -49,7 +51,11 @@ export default class ESClient {
             _response = response[0];
         }
 
-        return _response.statusCode === 200 ? _response.body : null;
+        if (_response.statusCode < 300) {
+            return _response.body;
+        }
+
+        throw new InternalServiceError('Internal Service Error', {code: 'INTERNAL_SERVICE_ERROR', details: _response.body && _response.body.error || _response.body});
     }
 
     // queries will be in following format:
@@ -97,7 +103,10 @@ export default class ESClient {
               });
         }
 
-        return recursiveFetch(0);
+        return recursiveFetch(0)
+          .catch(error => {
+              throw new InternalServiceError('Internal Service Error', {code: 'INTERNAL_SERVICE_ERROR', details: error});
+          });
     }
 
     search(queryOrPromise) {
@@ -132,6 +141,9 @@ export default class ESClient {
                           return null;
                       });
                 });
+          })
+          .catch(error => {
+              throw new InternalServiceError('Internal Service Error', {code: 'INTERNAL_SERVICE_ERROR', details: error});
           });
     }
 
@@ -140,13 +152,19 @@ export default class ESClient {
 
         //console.log('Explain: ', uri, JSON.stringify(query.search));
 
-        return this.request({method: 'POST', uri, body: query.search}).then(ESClient.processResponse);
+        return this.request({method: 'POST', uri, body: query.search}).then(ESClient.processResponse)
+          .catch(error => {
+              throw new InternalServiceError('Internal Service Error', {code: 'INTERNAL_SERVICE_ERROR', details: error});
+          });
     }
 
     termVectors(index, type, id) {
         const uri = `/${index}/${type}/${id}/_termvectors?fields=*`;
 
-        return this.request({method: 'GET', uri}).then(ESClient.processResponse);
+        return this.request({method: 'GET', uri}).then(ESClient.processResponse)
+          .catch(error => {
+              throw new InternalServiceError('Internal Service Error', {code: 'INTERNAL_SERVICE_ERROR', details: error});
+          });
     }
 
     multiSearch(queriesOrPromise) {
@@ -187,13 +205,19 @@ export default class ESClient {
                           return null;
                       });
                 });
+          })
+          .catch(error => {
+              throw new InternalServiceError('Internal Service Error', {code: 'INTERNAL_SERVICE_ERROR', details: error});
           });
     }
 
     analyze(index, analyzer, text) {
         const uri = `/${index}/_analyze?analyzer=${analyzer}&text=${encodeURIComponent(text)}`;
         return this.request({method: 'GET', uri})
-          .then(ESClient.processResponse);
+          .then(ESClient.processResponse)
+          .catch(error => {
+              throw new InternalServiceError('Internal Service Error', {code: 'INTERNAL_SERVICE_ERROR', details: error});
+          });
     }
 
 //    curl -XGET 'http://localhost:9200/imdb/movies/_validate/query?rewrite=true' -d '

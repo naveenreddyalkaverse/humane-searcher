@@ -10,21 +10,21 @@ import LanguageDetector from './LanguageDetector';
 import * as Constants from './Constants';
 import buildApiSchema from './ApiSchemaBuilder';
 
-import ValidationError from './ValidationError';
+import ValidationError from 'humane-node-commons/lib/ValidationError';
 
 class SearcherInternal {
     constructor(config) {
         // TODO: compile config, so searcher logic has lesser checks, extend search config with default configs
+        this.logLevel = config.logLevel || 'info';
         this.searchConfig = SearcherInternal.validateSearchConfig(config.searchConfig);
         this.apiSchema = buildApiSchema(config.searchConfig);
-        this.esClient = new ESClient(_.pick(config, ['esConfig', 'redisConfig', 'redisSentinelConfig']));
+        this.esClient = new ESClient(_.pick(config, ['logLevel', 'esConfig', 'redisConfig', 'redisSentinelConfig']));
         this.transliterator = config.transliterator;
         this.languageDetector = new LanguageDetector();
 
         this.eventEmitter = new EventEmitter();
 
         // todo: default registry of event handler for storing search queries in DB.
-
         if (config.searchConfig.eventHandlers) {
             _.forEach(config.searchConfig.eventHandlers, (handlerOrArray, eventName) => {
                 if (_.isArray(handlerOrArray)) {
@@ -54,8 +54,18 @@ class SearcherInternal {
         // validate it is valid type...
         const validationResult = Joi.validate(input, schema);
         if (validationResult.error) {
-            console.error('Error: ', validationResult.error);
-            throw new ValidationError('Non conforming format', {code: 'INVALID_FORMAT_ERROR', details: validationResult.error});
+            let errorDetails = null;
+
+            if (validationResult.error.details) {
+                errorDetails = validationResult.error.details;
+                if (_.isArray(errorDetails) && errorDetails.length === 1) {
+                    errorDetails = errorDetails[0];
+                }
+            } else {
+                errorDetails = validationResult.error;
+            }
+
+            throw new ValidationError('Non conforming format', {code: 'VALIDATION_ERROR', details: errorDetails});
         }
 
         return validationResult.value;

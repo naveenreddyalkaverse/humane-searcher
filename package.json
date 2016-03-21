@@ -12,17 +12,13 @@
   "author": "Shailendra Sharma",
   "license": "MIT",
   "dependencies": {
-    "agentkeepalive": "^2.0.5",
     "bluebird": "^3.3.4",
     "events": "^1.1.0",
-    "hiredis": "^0.4.1",
+    "humane-node-commons": "^1.0.1",
     "joi": "^8.0.4",
     "lodash": "^4.6.1",
     "md5": "^2.1.0",
-    "performance-now": "^0.2.0",
-    "redis": "^2.5.2",
-    "redis-sentinel": "^0.3.3",
-    "request": "^2.69.0"
+    "performance-now": "^0.2.0"
   },
   "devDependencies": {
     "babel-core": "^6.7.2",
