@@ -4,7 +4,7 @@ export const ORGANIC_MODE = 'organic';
 export const ENTITY_AUTOCOMPLETE_MODE = 'autocomplete:entity';
 export const POPULAR_SEARCH_AUTOCOMPLETE_MODE = 'autocomplete:popular_search';
 export const ENTITY_SUGGESTION_MODE = 'suggestion:entity';
-export const POPULAR_SEARCH_SUGGESTION_MODE = 'suggestion:entity';
+export const POPULAR_SEARCH_SUGGESTION_MODE = 'suggestion:popular_search';
 export const VALID_MODES = [
     ORGANIC_MODE,
     ENTITY_AUTOCOMPLETE_MODE,

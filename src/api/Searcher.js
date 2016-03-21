@@ -744,6 +744,10 @@ export default class Searcher {
                 {handler: this.search},
                 {handler: this.search, method: 'get'}
             ],
+            ':type/suggestedQueries': [
+                {handler: this.suggestedQueries},
+                {handler: this.suggestedQueries, method: 'get'}
+            ],
             ':type/view': [
                 {handler: this.view},
                 {handler: this.view, method: 'get'}
