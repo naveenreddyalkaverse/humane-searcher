@@ -1,6 +1,6 @@
 {
   "name": "humane-searcher",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Searcher module for Humane Search",
   "repository": "git@github.com:360fy/humane-searcher.git",
   "scripts": {
