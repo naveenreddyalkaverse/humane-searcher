@@ -14,8 +14,8 @@
   "dependencies": {
     "bluebird": "^3.3.4",
     "events": "^1.1.0",
-    "humane-node-commons": "^1.0.2",
-    "joi": "^8.0.4",
+    "humane-node-commons": "^1.1.0",
+    "joi": "^8.0.5",
     "lodash": "^4.6.1",
     "md5": "^2.1.0",
     "performance-now": "^0.2.0"
@@ -25,7 +25,7 @@
     "babel-plugin-transform-runtime": "^6.6.0",
     "babel-preset-node5": "^11.0.0",
     "eslint": "^2.4.0",
-    "eslint-config-360fy": "^1.0.1",
+    "eslint-config-360fy": "^1.1.0",
     "eslint-plugin-react": "^4.2.3"
   },
   "eslintConfig": {
