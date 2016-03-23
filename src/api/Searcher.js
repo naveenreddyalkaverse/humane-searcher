@@ -40,7 +40,7 @@ class SearcherInternal {
     // TODO: provide command line tool to validate config
     static validateSearchConfig(searchConfig) {
         if (!searchConfig.inputAnalyzer) {
-            throw new ValidationError('InputAnalyzer must be defined in search config');
+            throw new ValidationError('InputAnalyzer must be defined in search config', {details: {code: 'INPUT_ANALYZER_NOT_DEFINED'}});
         }
 
         return searchConfig;
@@ -48,7 +48,7 @@ class SearcherInternal {
 
     static validateInput(input, schema) {
         if (!input) {
-            throw new ValidationError('No input provided', {code: 'NO_INPUT_ERROR'});
+            throw new ValidationError('No input provided', {details: {code: 'NO_INPUT'}});
         }
 
         // validate it is valid type...
@@ -65,7 +65,7 @@ class SearcherInternal {
                 errorDetails = validationResult.error;
             }
 
-            throw new ValidationError('Non conforming format', {code: 'VALIDATION_ERROR', details: errorDetails});
+            throw new ValidationError('Non conforming format', {details: errorDetails});
         }
 
         return validationResult.value;
@@ -189,7 +189,7 @@ class SearcherInternal {
     getIndexTypeConfigFromType(type) {
         const typeConfig = this.searchConfig.types[type];
         if (!typeConfig) {
-            throw new ValidationError(`No index type config found for: ${type}`);
+            throw new ValidationError(`No index type config found for: ${type}`, {details: {code: 'INDEX_TYPE_NOT_FOUND', type}});
         }
 
         return typeConfig;
@@ -521,7 +521,7 @@ class SearcherInternal {
 
               const searchTypeConfig = searchTypeConfigs[input.type];
               if (!searchTypeConfig) {
-                  throw new ValidationError(`No type config found for: ${input.type}`);
+                  throw new ValidationError(`No type config found for: ${input.type}`, {details: {code: 'SEARCH_CONFIG_NOT_FOUND', type: input.type}});
               }
 
               return this.searchQuery(searchTypeConfig, input, tokens);

@@ -55,7 +55,7 @@ export default class ESClient {
             return _response.body;
         }
 
-        throw new InternalServiceError('Internal Service Error', {code: 'INTERNAL_SERVICE_ERROR', status: _response.statusCode, details: _response.body && _response.body.error || _response.body});
+        throw new InternalServiceError('Internal Service Error', {_statusCode: _response.statusCode, details: _response.body && _response.body.error || _response.body});
     }
 
     // queries will be in following format:
@@ -105,7 +105,7 @@ export default class ESClient {
 
         return recursiveFetch(0)
           .catch(error => {
-              throw new InternalServiceError('Internal Service Error', {code: 'INTERNAL_SERVICE_ERROR', details: error && error.cause || error, stack: error && error.stack});
+              throw new InternalServiceError('Internal Service Error', {details: error && error.cause || error, stack: error && error.stack});
           });
     }
 
@@ -143,7 +143,7 @@ export default class ESClient {
                 });
           })
           .catch(error => {
-              throw new InternalServiceError('Internal Service Error', {code: 'INTERNAL_SERVICE_ERROR', details: error && error.cause || error, stack: error && error.stack});
+              throw new InternalServiceError('Internal Service Error', {details: error && error.cause || error, stack: error && error.stack});
           });
     }
 
@@ -154,7 +154,7 @@ export default class ESClient {
 
         return this.request({method: 'POST', uri, body: query.search}).then(ESClient.processResponse)
           .catch(error => {
-              throw new InternalServiceError('Internal Service Error', {code: 'INTERNAL_SERVICE_ERROR', details: error && error.cause || error, stack: error && error.stack});
+              throw new InternalServiceError('Internal Service Error', {details: error && error.cause || error, stack: error && error.stack});
           });
     }
 
@@ -163,7 +163,7 @@ export default class ESClient {
 
         return this.request({method: 'GET', uri}).then(ESClient.processResponse)
           .catch(error => {
-              throw new InternalServiceError('Internal Service Error', {code: 'INTERNAL_SERVICE_ERROR', details: error && error.cause || error, stack: error && error.stack});
+              throw new InternalServiceError('Internal Service Error', {details: error && error.cause || error, stack: error && error.stack});
           });
     }
 
@@ -207,7 +207,7 @@ export default class ESClient {
                 });
           })
           .catch(error => {
-              throw new InternalServiceError('Internal Service Error', {code: 'INTERNAL_SERVICE_ERROR', details: error && error.cause || error, stack: error && error.stack});
+              throw new InternalServiceError('Internal Service Error', {details: error && error.cause || error, stack: error && error.stack});
           });
     }
 
@@ -216,7 +216,7 @@ export default class ESClient {
         return this.request({method: 'GET', uri})
           .then(ESClient.processResponse)
           .catch(error => {
-              throw new InternalServiceError('Internal Service Error', {code: 'INTERNAL_SERVICE_ERROR', details: error && error.cause || error, stack: error && error.stack});
+              throw new InternalServiceError('Internal Service Error', {details: error && error.cause || error, stack: error && error.stack});
           });
     }
 
