@@ -8,7 +8,6 @@
 >    * BODY must be valid `JSON`.
 >    * All requests shall have `Content-Type` header as: `Content-Type: application/json`
 
-
 ### Search for Type
 
 This method build search results for a given type, based on input text.
@@ -134,9 +133,8 @@ This method build search results for a given type, based on input text.
             }
         ```
 
-- ERROR RESPONSE: [_TODO_]
-
-
+- ERROR RESPONSE: See Common Error Scenarios
+         
 ###### **Method 2**
 
 - TYPE: `GET`
@@ -159,7 +157,7 @@ This method build search results for a given type, based on input text.
 
 - SUCCESS RESPONSE: Same as method 1
 
-- ERROR RESPONSE: Same as method 1
+- ERROR RESPONSE: See Common Error Scenarios
 
 - Note: Not a valid method for multi search
 
@@ -173,7 +171,7 @@ This method build search results for a given type, based on input text.
 
 - SUCCESS RESPONSE: Same as method 1
 
-- ERROR RESPONSE: Same as method 1
+- ERROR RESPONSE: See Common Error Scenarios
 
 - Note: Not a valid method for multi search
 
@@ -203,8 +201,7 @@ This method builds autocomplete suggestions for a given type, based on input tex
      
 - SUCCESS RESPONSE : see search for explanation and scenarios
 
-- ERROR RESPONSE: see search for explanation and scenarios
-
+- ERROR RESPONSE: See Common Error Scenarios
 
 ###### **Method 2**
 
@@ -216,7 +213,7 @@ This method builds autocomplete suggestions for a given type, based on input tex
 
 - SUCCESS RESPONSE: Same as method 1
 
-- ERROR RESPONSE: Same as method 1
+- ERROR RESPONSE: See Common Error Scenarios
 
 ###### **Method 3**
 
@@ -228,7 +225,7 @@ This method builds autocomplete suggestions for a given type, based on input tex
 
 - SUCCESS RESPONSE: Same as method 1
 
-- ERROR RESPONSE: Same as method 1
+- ERROR RESPONSE: See Common Error Scenarios
 
 - Note: Not a valid method for multi autocomplete
 
@@ -242,7 +239,7 @@ This method builds autocomplete suggestions for a given type, based on input tex
 
 - SUCCESS RESPONSE: Same as method 1
 
-- ERROR RESPONSE: Same as method 1
+- ERROR RESPONSE: See Common Error Scenarios
 
 - Note: Not a valid method for multi autocomplete
     
@@ -276,8 +273,7 @@ This method builds suggested queries for a given type, based on input text.
     * see search for explanation and scenarios
     * but even for `multi` scenario response structure is same as `single` - except results array would have multiple types of results.
 
-- ERROR RESPONSE: see search for explanation and scenarios
-
+- ERROR RESPONSE: See Common Error Scenarios
 
 ###### **Method 2**
 
@@ -317,6 +313,54 @@ This method builds suggested queries for a given type, based on input text.
 
 - ERROR RESPONSE: Same as method 1
 
-- Note: Not a valid method for multi autocomplete    
+- Note: Not a valid method for multi autocomplete
+    
+### Common Error Scenarios
+
+- Case: Unrecognized Type - when type is not among the configured
+
+    - Http Status Code: 400
+    
+    - Sample Response Body :
+    
+      ```json
+       {
+         "_statusCode": 400,
+         "_errorCode": "VALIDATION_ERROR",
+         "_status": "ERROR",
+         "details": {
+           "message": "\"type\" must be one of [category_entity, author_entity, publisher_entity, book, null, *]",
+           "path": "type",
+           "type": "any.allowOnly",
+           "context": {
+             "valids": [
+               "category_entity",
+               "author_entity",
+               "publisher_entity",
+               "book",
+               null,
+               "*"
+             ],
+             "key": "type"
+           }
+         },
+         "_errorId": 1458927217570
+       }
+       ```
+         
+- Case: Internal Service Error - when there is some internal service error
+
+    - Http Status Code: 500
+    
+    - Sample Response Body :
+    
+      ```json
+      {
+        "_statusCode": 500,
+        "_errorCode": "INTERNAL_SERVICE_ERROR",
+        "_status": "ERROR",
+        "_errorId": 1458819775194
+      }
+      ```    
 
 ## Configuration
