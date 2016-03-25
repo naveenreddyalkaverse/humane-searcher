@@ -51,7 +51,7 @@ export default class ESClient {
             _response = response[0];
         }
 
-        if (_response.statusCode < 300) {
+        if (_response.statusCode < 400) {
             return _response.body;
         }
 
