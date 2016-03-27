@@ -5,11 +5,11 @@ import Promise from 'bluebird';
 import {EventEmitter} from 'events';
 
 import ESClient from './ESClient';
-import LanguageDetector from './LanguageDetector';
 
 import * as Constants from './Constants';
 import buildApiSchema from './ApiSchemaBuilder';
 
+import LanguageDetector from 'humane-node-commons/lib/LanguageDetector';
 import ValidationError from 'humane-node-commons/lib/ValidationError';
 
 class SearcherInternal {
@@ -535,8 +535,20 @@ class SearcherInternal {
 
               return queryOrArray;
           })
-          .then(queryOrArray => multiSearch ? this.esClient.multiSearch(queryOrArray) : this.esClient.search(queryOrArray))
-          .then((response) => multiSearch ? this.processMultipleSearchResponse(response) : this.processSingleSearchResponse(response))
+          .then(queryOrArray => {
+              if (multiSearch) {
+                  return this.esClient.multiSearch(queryOrArray);
+              }
+
+              return this.esClient.search(queryOrArray);
+          })
+          .then((response) => {
+              if (multiSearch) {
+                  return this.processMultipleSearchResponse(response);
+              }
+
+              return this.processSingleSearchResponse(response);
+          })
           .then(response => {
               this.eventEmitter.emit(eventName, {headers, queryData: input, queryLanguages, queryResult: response});
 

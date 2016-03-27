@@ -1,7 +1,7 @@
 {
   "name": "humane-searcher",
   "version": "1.1.2",
-  "description": "Searcher module for Humane Search",
+  "description": "Searcher module for Humane Discovery",
   "repository": "git@github.com:360fy/humane-searcher.git",
   "scripts": {
     "lint": "eslint ./src/",
@@ -14,18 +14,18 @@
   "dependencies": {
     "bluebird": "^3.3.4",
     "events": "^1.1.0",
-    "humane-node-commons": "^1.1.1",
+    "humane-node-commons": "^1.1.2",
     "joi": "^8.0.5",
     "lodash": "^4.6.1",
     "md5": "^2.1.0",
     "performance-now": "^0.2.0"
   },
   "devDependencies": {
-    "babel-core": "^6.7.2",
+    "babel-core": "^6.7.4",
     "babel-plugin-transform-runtime": "^6.6.0",
-    "babel-preset-node5": "^11.0.0",
-    "eslint": "^2.4.0",
-    "eslint-config-360fy": "^1.1.0",
+    "babel-preset-node5": "^11.0.1",
+    "eslint": "^2.5.1",
+    "eslint-config-360fy": "^1.1.1",
     "eslint-plugin-react": "^4.2.3"
   },
   "eslintConfig": {

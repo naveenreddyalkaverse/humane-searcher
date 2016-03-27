@@ -30,7 +30,13 @@ export default class ESClient {
     retrieveFromCache(key) {
         // nice to have: pack data with MessagePack
         return this.redisClient.getAsync(key)
-          .then((data) => !!data ? JSON.parse(data) : null)
+          .then((data) => {
+              if (!_.isUndefined(data) && !_.isNull(data) && _.isString(data)) {
+                  return JSON.parse(data);
+              }
+
+              return null;
+          })
           .catch(() => {
               console.error('REDIS_ERROR: Error in retrieving key: ', key);
               return null;
@@ -196,7 +202,13 @@ export default class ESClient {
 
                     return this.request({method: 'POST', uri, body: bulkQuery, json: false})
                       .then(ESClient.processResponse)
-                      .then((response) => !!response ? JSON.parse(response) : null)
+                      .then(response => {
+                          if (!_.isUndefined(response) && !_.isNull(response) && _.isString(response)) {
+                              return JSON.parse(response);
+                          }
+
+                          return null;
+                      })
                       .then(queryResponse => {
                           if (queryResponse) {
                               return this.storeInCache(cacheKey, queryResponse);
