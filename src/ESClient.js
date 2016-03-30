@@ -19,7 +19,7 @@ export default class ESClient {
     // throw new InternalServiceError('Internal Service Error', {code: 'INTERNAL_SERVICE_ERROR', details: response.body && response.body.error || response.body});
     storeInCache(key, data) {
         // nice to have: pack data with MessagePack
-        return this.redisClient.setAsync(key, JSON.stringify(data))
+        return this.redisClient.setAsync([key, JSON.stringify(data), 'EX', 300])
           .then(() => data)
           .catch(() => {
               console.error('REDIS_ERROR: Error in storing key: ', key);
