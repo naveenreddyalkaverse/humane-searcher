@@ -3,12 +3,9 @@ import _ from 'lodash';
 import Joi from 'joi';
 import Promise from 'bluebird';
 import {EventEmitter} from 'events';
-
 import ESClient from './ESClient';
-
 import * as Constants from './Constants';
 import buildApiSchema from './ApiSchemaBuilder';
-
 import LanguageDetector from 'humane-node-commons/lib/LanguageDetector';
 import ValidationError from 'humane-node-commons/lib/ValidationError';
 
@@ -72,108 +69,60 @@ class SearcherInternal {
     }
 
     //noinspection JSMethodCanBeStatic
-    constantScoreQuery(fieldConfig, query, boostMultiplier, noWrapIntoConstantScore) {
-        if (noWrapIntoConstantScore) {
-            return query;
-        }
-
-        const boost = (boostMultiplier || 1.0) * (fieldConfig.weight || 1.0);
-
-        return {constant_score: {query, boost}};
-    }
-
-    wrapQuery(fieldConfig, query, boostMultiplier = this.searchConfig.matchTypeBoosts.exact, noWrapIntoConstantScore) {
+    constantScoreQuery(fieldConfig, query) {
         if (fieldConfig.filter) {
             return query;
         }
 
-        if (fieldConfig.nestedPath) {
-            query = {nested: {path: fieldConfig.nestedPath, query}};
+        const boost = 1.0 * (fieldConfig.weight || 1.0);
+
+        if (boost === 1.0) {
+            return query;
         }
 
-        return this.constantScoreQuery(fieldConfig, query, boostMultiplier, noWrapIntoConstantScore);
+        return {constant_score: {query, boost}};
     }
 
-    matchQuery(fieldConfig, text, boostMultiplier, fuzziness = undefined, fieldName) {
-        const query = {
-            match: {[fieldName || fieldConfig.field]: {query: text, fuzziness, prefix_length: fuzziness && 2 || undefined}}
-        };
-
-        return this.wrapQuery(fieldConfig, query, boostMultiplier);
+    wrapQuery(fieldConfig, query) {
+        return this.constantScoreQuery(fieldConfig, fieldConfig.nestedPath ? {nested: {path: fieldConfig.nestedPath, query}} : query);
     }
 
-    termQuery(fieldConfig, term, boostMultiplier, fieldName) {
-        const queryType = _.isArray(term) ? 'terms' : 'term';
-        const query = {
-            [queryType]: {[fieldName || fieldConfig.field]: term}
-        };
-
-        return this.wrapQuery(fieldConfig, query, boostMultiplier);
-    }
-
-    query(fieldConfig, query, boostMultiplier, fuzziness, fieldName) {
-        if (fieldConfig.termQuery) {
-            return this.termQuery(fieldConfig, query, boostMultiplier, fieldName);
-        }
-
-        return this.matchQuery(fieldConfig, query, boostMultiplier, fuzziness, fieldName);
-    }
-
-    fuzzyQueries(fieldConfig, text) {
-        const field = fieldConfig.field;
-
-        const queries = [
-            this.matchQuery(fieldConfig, text),
-
-            this.matchQuery(fieldConfig, text, this.searchConfig.matchTypeBoosts.edgeGram, 0, `${field}.edgeGram`),
-
-            this.constantScoreQuery(fieldConfig, {
-                bool: {
-                    should: [
-                        this.matchQuery(fieldConfig, text, this.searchConfig.matchTypeBoosts.phonetic, 0, `${field}.phonetic_soundex`, true),
-                        this.matchQuery(fieldConfig, text, this.searchConfig.matchTypeBoosts.phonetic, 0, `${field}.phonetic_dm`, true),
-                        this.matchQuery(fieldConfig, text, this.searchConfig.matchTypeBoosts.phonetic, 0, `${field}.phonetic_bm`, true)
-                    ],
-                    minimum_should_match: 2
+    //noinspection JSMethodCanBeStatic
+    humaneQuery(fieldConfig, text) {
+        return {
+            humane_query: {
+                [fieldConfig.field]: {
+                    query: text,
+                    boost: fieldConfig.weight,
+                    vernacularOnly: fieldConfig.vernacularOnly,
+                    path: fieldConfig.nestedPath,
+                    noFuzzy: fieldConfig.noFuzzy
                 }
-            }, this.searchConfig.matchTypeBoosts.phonetic),
-
-            this.constantScoreQuery(fieldConfig, {
-                bool: {
-                    should: [
-                        this.matchQuery(fieldConfig, text, this.searchConfig.matchTypeBoosts.phoneticEdgeGram, 0, `${field}.phonetic_edgeGram_soundex`, true),
-                        this.matchQuery(fieldConfig, text, this.searchConfig.matchTypeBoosts.phoneticEdgeGram, 0, `${field}.phonetic_edgeGram_dm`, true),
-                        this.matchQuery(fieldConfig, text, this.searchConfig.matchTypeBoosts.phoneticEdgeGram, 0, `${field}.phonetic_edgeGram_bm`, true)
-                    ],
-                    minimum_should_match: 2
-                }
-            }, this.searchConfig.matchTypeBoosts.phonetic)
-
-            //SearcherInternal.matchQuery(`${field}.phonetic_bm`, query, 'AUTO', baseBoost * 2.0 * 1.20),
-            //SearcherInternal.matchQuery(`${field}.phonetic_edgeGram_bm`, query, 'AUTO', baseBoost * 2.0)
-        ];
-
-        if (text && text.length >= 3 && text.length <= 4) {
-            queries.push(this.matchQuery(fieldConfig, text, this.searchConfig.matchTypeBoosts.exact_edit, 1));
-        }
-
-        if (text && text.length > 4 && text.length <= 7) {
-            queries.push(this.matchQuery(fieldConfig, text, this.searchConfig.matchTypeBoosts.exact_edit, 2));
-            queries.push(this.matchQuery(fieldConfig, text, this.searchConfig.matchTypeBoosts.edgeGram_edit, 1, `${field}.edgeGram`));
-        }
-
-        return queries;
+            }
+        };
     }
 
-    buildFieldQuery(fieldConfig, englishTerm, vernacularTerm, queries) {
-        let query = null;
-        if (vernacularTerm && fieldConfig.vernacularOnly) {
-            query = this.query(fieldConfig, vernacularTerm);
-        } else if (fieldConfig.noFuzzy || fieldConfig.termQuery) {
-            query = this.query(fieldConfig, englishTerm);
-        } else {
-            query = this.fuzzyQueries(fieldConfig, englishTerm);
+    //noinspection JSMethodCanBeStatic
+    termQuery(fieldConfig, text) {
+        const queryType = _.isArray(text) ? 'terms' : 'term';
+        return {
+            [queryType]: {
+                [fieldConfig.field]: text
+            }
+        };
+    }
+
+    query(fieldConfig, text) {
+        // only for filter we allow termQuery
+        if (fieldConfig.termQuery && fieldConfig.filter) {
+            return this.termQuery(fieldConfig, text);
         }
+
+        return this.humaneQuery(fieldConfig, text);
+    }
+
+    buildFieldQuery(fieldConfig, englishTerm, queries) {
+        const query = this.wrapQuery(fieldConfig, this.query(fieldConfig, englishTerm));
 
         if (queries) {
             if (_.isArray(query)) {
@@ -195,25 +144,67 @@ class SearcherInternal {
         return typeConfig;
     }
 
-    buildTypeQuery(searchTypeConfig, term) {
-        const languages = this.languageDetector.detect(term);
-
-        let englishTerm = term;
-        let vernacularTerm = null;
-        if (!(!languages || languages.length === 1 && languages[0].code === 'en') && this.transliterator) {
-            // it's vernacular
-            vernacularTerm = term;
-            englishTerm = this.transliterator.transliterate(vernacularTerm);
-        }
+    //noinspection JSMethodCanBeStatic
+    buildTypeQuery(searchTypeConfig, text) {
+        // // TODO: language detection is not needed immediately, but shall be moved to esplugin
+        // const languages = this.languageDetector.detect(text);
+        //
+        // let englishTerm = text;
+        // let vernacularTerm = null;
+        // if (!(!languages || languages.length === 1 && languages[0].code === 'en') && this.transliterator) {
+        //     // it's vernacular
+        //     vernacularTerm = text;
+        //     englishTerm = this.transliterator.transliterate(vernacularTerm);
+        // }
+        //
+        // const indexTypeConfig = searchTypeConfig.indexType;
+        //
+        // const queries = [];
+        // _.forEach(searchTypeConfig.queryFields || indexTypeConfig.queryFields, fieldConfig => this.buildFieldQuery(fieldConfig, englishTerm, vernacularTerm, queries));
+        //
+        // return {
+        //     query: queries.length > 1 ? {dis_max: {queries}} : queries[0],
+        //     language: languages && _.map(languages, lang => lang.code)
+        // };
 
         const indexTypeConfig = searchTypeConfig.indexType;
+        const queryFields = searchTypeConfig.queryFields || indexTypeConfig.queryFields;
 
-        const queries = [];
-        _.forEach(searchTypeConfig.queryFields || indexTypeConfig.queryFields, fieldConfig => this.buildFieldQuery(fieldConfig, englishTerm, vernacularTerm, queries));
+        if (!queryFields) {
+            throw new ValidationError('No query fields defined', {details: {code: 'NO_QUERY_FIELDS_DEFINED'}});
+        } else if (queryFields.length === 1) {
+            const queryField = queryFields[0];
 
+            return {
+                query: this.wrapQuery(queryField, {
+                    humane_query: {
+                        [queryField.field]: {
+                            query: text,
+                            boost: queryField.weight,
+                            vernacularOnly: queryField.vernacularOnly,
+                            noFuzzy: queryField.noFuzzy
+                        }
+                    }
+                })
+            };
+        }
         return {
-            query: queries.length > 1 ? {dis_max: {queries}} : queries[0],
-            language: languages && _.map(languages, lang => lang.code)
+            query: {
+                multi_humane_query: {
+                    query: text,
+                    fields: _(queryFields)
+                      .filter(queryField => !queryField.vernacularOnly)
+                      .map(queryField => ({
+                          field: queryField.field,
+                          boost: queryField.weight,
+                          vernacularOnly: queryField.vernacularOnly,
+                          path: queryField.nestedPath,
+                          noFuzzy: queryField.noFuzzy
+                      }))
+                      .value()
+
+                }
+            }
         };
     }
 
@@ -245,18 +236,18 @@ class SearcherInternal {
                     filterValue = filterConfig.value(filterValue);
                 }
 
-                this.buildFieldQuery(_.extend({filter: true}, filterConfigs[key]), filterValue, null, filterQueries);
+                this.buildFieldQuery(_.extend({filter: true}, filterConfigs[key]), filterValue, filterQueries);
             }
 
             return true;
         });
 
         if (input.lang && !_.isEmpty(input.lang)) {
-            this.buildFieldQuery(_.extend({filter: true}, filterConfigs.lang), input.lang, null, filterQueries);
+            this.buildFieldQuery(_.extend({filter: true}, filterConfigs.lang), input.lang, filterQueries);
         }
 
         if (termLanguages && !_.isEmpty(termLanguages)) {
-            this.buildFieldQuery(_.extend({filter: true}, filterConfigs.lang), termLanguages, null, filterQueries);
+            this.buildFieldQuery(_.extend({filter: true}, filterConfigs.lang), termLanguages, filterQueries);
         }
 
         if (filterQueries.length === 1) {
@@ -368,47 +359,112 @@ class SearcherInternal {
         return undefined;
     }
 
-    analyzeInput(text) {
-        return this.esClient.analyze(this.searchConfig.inputAnalyzer.index, this.searchConfig.inputAnalyzer.name, text);
+    facet(facetConfig) {
+        if (!facetConfig.key) {
+            throw new ValidationError('No name defined for facet', {details: {code: 'NO_FACET_NAME_DEFINED'}});
+        }
+
+        if (!facetConfig.type) {
+            throw new ValidationError('No facet type defined', {details: {code: 'NO_FACET_TYPE_DEFINED', facetName: facetConfig.key}});
+        }
+
+        if ((facetConfig.type === 'field' || facetConfig.type === 'ranges') && !facetConfig.field) {
+            throw new ValidationError('No facet field defined', {details: {code: 'NO_FACET_FIELD_DEFINED', facetName: facetConfig.key, facetType: facetConfig.type}});
+        }
+
+        const facetKey = facetConfig.key;
+        let facetValue = null;
+
+        if (facetConfig.type === 'field') {
+            facetValue = {
+                terms: {
+                    field: facetConfig.field
+                }
+            };
+        } else if (facetConfig.type === 'ranges') {
+            if (!facetConfig.ranges) {
+                throw new ValidationError('No ranges defined for range type facet', {details: {code: 'NO_RANGES_DEFINED', facetName: facetConfig.key, facetType: facetConfig.type}});
+            }
+
+            facetValue = {
+                range: {
+                    field: facetConfig.field,
+                    ranges: _.map(facetConfig.ranges, range => {
+                        if (!range.key) {
+                            throw new ValidationError('No range facet key defined', {details: {code: 'NO_RANGE_FACET_KEY_DEFINED', facetName: facetConfig.key, facetType: facetConfig.type}});
+                        }
+
+                        if (!range.from && !range.to) {
+                            throw new ValidationError('None of range from & to defined', {details: {code: 'NO_RANGE_ENDS_DEFINED', facetName: facetConfig.key, facetType: facetConfig.type}});
+                        }
+
+                        return {
+                            key: range.key,
+                            from: range.from,
+                            to: range.to
+                        };
+                    })
+                }
+            };
+        } else if (facetConfig.type === 'filters') {
+            if (!facetConfig.filters) {
+                throw new ValidationError('No filters defined for filters type facet', {details: {code: 'NO_FILTERS_DEFINED', facetName: facetConfig.key, facetType: facetConfig.type}});
+            }
+
+            const filters = {};
+
+            _.forEach(facetConfig.filters, filter => {
+                filters[filter.key] = filter.filter;
+            });
+
+            facetValue = {
+                filters: {filters}
+            };
+        } else {
+            // throw error here
+            throw new ValidationError('Unknown facet type', {details: {code: 'UNKNOWN_FACET_TYPE', facetName: facetConfig.key, facetType: facetConfig.type}});
+        }
+
+        if ((facetConfig.type === 'field' || facetConfig.type === 'ranges') && facetConfig.nestedPath) {
+            facetValue = {
+                nested: {
+                    path: facetConfig.nestedPath
+                },
+                aggs: {
+                    nested: facetValue
+                }
+            };
+        }
+
+        return {
+            key: facetKey,
+            value: facetValue
+        };
     }
 
-    // todo: calculate minimum should match dynamically
-    searchQuery(searchTypeConfig, input, tokens) {
-        const queryParts = [];
-        const queryLanguages = {};
+    facetsPart(searchTypeConfig) {
+        if (!searchTypeConfig.facets) {
+            return null;
+        }
 
-        const promise = !!tokens ? tokens : this.analyzeInput(input.text).then((response) => response && response.tokens && _.map(response.tokens, token => token.token));
+        let facetConfigs = searchTypeConfig.facets;
+        if (!_.isArray(facetConfigs)) {
+            facetConfigs = [facetConfigs];
+        }
 
-        return Promise.resolve(promise)
-          .then((response) => response && _.map(response, token => this.buildTypeQuery(searchTypeConfig, token)))
-          .then((parts) => {
-              _.forEach(parts, part => {
-                  if (part.language) {
-                      if (_.isArray(part.language)) {
-                          _.forEach(part.language, lang => {
-                              queryLanguages[lang] = true;
-                          });
-                      } else {
-                          queryLanguages[part.language] = true;
-                      }
-                  }
+        const facets = {};
 
-                  queryParts.push(part.query);
-              });
+        _.forEach(facetConfigs, facetConfig => {
+            const facet = this.facet(facetConfig);
+            facets[facet.key] = facet.value;
+        });
 
-              return queryParts;
-          })
-          .then(() => {
-              let must = undefined;
-              let should = undefined;
-              if (!_.isArray(queryParts)) {
-                  must = queryParts;
-              } else if (queryParts.length === 1) {
-                  must = queryParts[0];
-              } else {
-                  should = queryParts;
-              }
+        return facets;
+    }
 
+    searchQuery(searchTypeConfig, input, text) {
+        return Promise.resolve(this.buildTypeQuery(searchTypeConfig, text))
+          .then(({query, queryLanguages}) => {
               const filter = this.filterPart(searchTypeConfig, input, _.keys(queryLanguages));
 
               const indexTypeConfig = searchTypeConfig.indexType;
@@ -416,6 +472,11 @@ class SearcherInternal {
               let sort = this.sortPart(searchTypeConfig, input) || undefined;
               if (sort && _.isEmpty(sort)) {
                   sort = undefined;
+              }
+
+              let facets = this.facetsPart(searchTypeConfig) || undefined;
+              if (facets && _.isEmpty(facets)) {
+                  facets = undefined;
               }
 
               return {
@@ -428,7 +489,10 @@ class SearcherInternal {
                       query: {
                           function_score: {
                               query: {
-                                  bool: {must, should, filter, minimum_should_match: searchTypeConfig.minimumShouldMatch}
+                                  bool: {
+                                      must: query,
+                                      filter
+                                  }
                               },
                               field_value_factor: {
                                   field: 'weight',
@@ -436,67 +500,102 @@ class SearcherInternal {
                                   missing: 1
                               }
                           }
-                      }
+                      },
+                      aggs: facets
                   },
                   queryLanguages
               };
           });
     }
 
-    processMultipleSearchResponse(responses) {
+    _processResponse(response, searchTypesConfig) {
+        let type = null;
+        let name = null;
+
+        const results = [];
+
+        if (response.hits && response.hits.hits) {
+            let first = true;
+            _.forEach(response.hits.hits, hit => {
+                if (first || !type) {
+                    type = hit._type;
+                    const typeConfig = this.searchConfig.types[type];
+                    name = !!typeConfig ? typeConfig.name || typeConfig.type : type;
+
+                    first = false;
+                }
+
+                results.push(_.defaults(_.pick(hit, ['_id', '_score', '_type']), {_name: name}, hit._source));
+            });
+        }
+
+        const searchTypeConfig = searchTypesConfig[type];
+
+        let facets;
+        if (searchTypeConfig.facets && response.aggregations) {
+            facets = {};
+            let facetConfigs = searchTypeConfig.facets;
+            if (!_.isArray(facetConfigs)) {
+                facetConfigs = [facetConfigs];
+            }
+
+            _.forEach(facetConfigs, facetConfig => {
+                let facet = response.aggregations[facetConfig.key];
+
+                if (!facet) {
+                    return true;
+                }
+
+                if ((facetConfig.type === 'field' || facetConfig.type === 'ranges') && facetConfig.path) {
+                    facet = facet[facetConfig.key];
+                }
+
+                const buckets = facet.buckets;
+
+                facets[facetConfig.key] = _.map(buckets, bucket => ({
+                    key: bucket.key,
+                    count: bucket.doc_count,
+                    from: facet.from,
+                    from_as_string: facet.from_as_string,
+                    to: facet.to,
+                    to_as_string: facet.to_as_string
+                }));
+
+                return true;
+            });
+        }
+
+        return {type, name, results, facets, queryTimeTaken: response.took, totalResults: _.get(response, 'hits.total', 0)};
+    }
+
+    processMultipleSearchResponse(responses, searchTypesConfig) {
         if (!responses) {
             return null;
         }
 
-        const result = {
+        const mergedResult = {
             multi: true,
             totalResults: 0,
             results: {}
         };
 
         _.forEach(responses.responses, (response) => {
-            result.queryTimeTaken = Math.max(result.queryTimeTaken || 0, response.took);
+            const result = this._processResponse(response, searchTypesConfig);
 
-            if (response.hits && response.hits.hits) {
-                _.forEach(response.hits.hits, hit => {
-                    const typeConfig = this.searchConfig.types[hit._type];
-                    const name = !!typeConfig ? typeConfig.name || typeConfig.type : hit._type;
-
-                    let resultGroup = result.results[name];
-                    if (!resultGroup) {
-                        resultGroup = result.results[name] = {
-                            results: [],
-                            totalResults: response.hits.total || 0,
-                            name,
-                            type: hit._type
-                        };
-                        result.totalResults += resultGroup.totalResults;
-                    }
-
-                    resultGroup.results.push(_.extend(hit._source, {_id: hit._id, _score: hit._score, _type: hit._type, _name: name}));
-                });
-            }
+            mergedResult.queryTimeTaken = Math.max(mergedResult.queryTimeTaken || 0, result.queryTimeTaken);
+            mergedResult.results[result.name] = result;
+            mergedResult.totalResults += result.totalResults;
         });
 
-        return result;
+        return mergedResult;
     }
 
-    processSingleSearchResponse(response) {
+    processSingleSearchResponse(response, searchTypesConfig) {
         if (!response) {
             return null;
         }
 
-        const type = response.hits && response.hits.hits && response.hits.hits.length > 0 && response.hits.hits[0]._type;
-        const typeConfig = this.searchConfig.types[type];
-        const name = !!typeConfig ? typeConfig.name || typeConfig.type : type;
-
-        return {
-            queryTimeTaken: response.took,
-            totalResults: response.hits && response.hits.total || 0,
-            type,
-            name,
-            results: response.hits && _.map(response.hits.hits, (hit) => _.extend(hit._source, {_id: hit._id, _score: hit._score, _type: hit._type, _name: name})) || []
-        };
+        return this._processResponse(response, searchTypesConfig);
     }
 
     _searchInternal(headers, input, searchTypeConfigs, eventName) {
@@ -504,28 +603,24 @@ class SearcherInternal {
 
         let multiSearch = false;
 
-        return this.analyzeInput(input.text)
-          .then((response) => response && response.tokens && _.map(response.tokens, token => token.token))
-          .then((tokens) => {
-              if (!tokens) {
-                  return null;
-              }
+        let promise = null;
 
-              if (!input.type || input.type === '*') {
-                  const searchQueries = _(searchTypeConfigs).values().map(typeConfig => this.searchQuery(typeConfig, input, tokens)).value();
+        if (!input.type || input.type === '*') {
+            const searchQueries = _(searchTypeConfigs).values().map(typeConfig => this.searchQuery(typeConfig, input, input.text)).value();
 
-                  multiSearch = _.isArray(searchQueries) || false;
+            multiSearch = _.isArray(searchQueries) || false;
 
-                  return Promise.all(searchQueries);
-              }
+            promise = Promise.all(searchQueries);
+        } else {
+            const searchTypeConfig = searchTypeConfigs[input.type];
+            if (!searchTypeConfig) {
+                throw new ValidationError(`No type config found for: ${input.type}`, {details: {code: 'SEARCH_CONFIG_NOT_FOUND', type: input.type}});
+            }
 
-              const searchTypeConfig = searchTypeConfigs[input.type];
-              if (!searchTypeConfig) {
-                  throw new ValidationError(`No type config found for: ${input.type}`, {details: {code: 'SEARCH_CONFIG_NOT_FOUND', type: input.type}});
-              }
+            promise = this.searchQuery(searchTypeConfig, input, input.text);
+        }
 
-              return this.searchQuery(searchTypeConfig, input, tokens);
-          })
+        return Promise.resolve(promise)
           .then(queryOrArray => {
               if (multiSearch) {
                   queryLanguages = _.head(queryOrArray).queryLanguages;
@@ -544,10 +639,10 @@ class SearcherInternal {
           })
           .then((response) => {
               if (multiSearch) {
-                  return this.processMultipleSearchResponse(response);
+                  return this.processMultipleSearchResponse(response, searchTypeConfigs);
               }
 
-              return this.processSingleSearchResponse(response);
+              return this.processSingleSearchResponse(response, searchTypeConfigs);
           })
           .then(response => {
               this.eventEmitter.emit(eventName, {headers, queryData: input, queryLanguages, queryResult: response});
