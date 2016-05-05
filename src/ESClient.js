@@ -13,23 +13,30 @@ export default class ESClient {
     constructor(config) {
         this.request = buildRequest(_.extend({}, config.esConfig, {logLevel: config.logLevel, baseUrl: config.esConfig && config.esConfig.url || 'http://localhost:9200'}));
 
+        this.redisKeyPrefix = process.env.REDIS_KEY_PREFIX;
+        if (this.redisKeyPrefix) {
+            this.redisKeyPrefix = `${this.redisKeyPrefix}/`;
+        } else {
+            this.redisKeyPrefix = '';
+        }
+        
         this.redisClient = buildRedisClient(_.pick(config, ['redisConfig', 'redisSentinelConfig']));
     }
 
     // throw new InternalServiceError('Internal Service Error', {code: 'INTERNAL_SERVICE_ERROR', details: response.body && response.body.error || response.body});
     storeInCache(key, data) {
         // nice to have: pack data with MessagePack
-        return this.redisClient.setAsync([key, JSON.stringify(data), 'EX', 300])
+        return this.redisClient.setAsync([this.redisKeyPrefix + key, JSON.stringify(data), 'EX', 300])
           .then(() => data)
           .catch(() => {
-              console.error('REDIS_ERROR: Error in storing key: ', key);
+              console.error('REDIS_ERROR: Error in storing key: ', this.redisKeyPrefix + key);
               return null;
           }); // eat the error
     }
 
     retrieveFromCache(key) {
         // nice to have: pack data with MessagePack
-        return this.redisClient.getAsync(key)
+        return this.redisClient.getAsync(this.redisKeyPrefix + key)
           .then((data) => {
               if (!_.isUndefined(data) && !_.isNull(data) && _.isString(data)) {
                   return JSON.parse(data);
@@ -38,15 +45,15 @@ export default class ESClient {
               return null;
           })
           .catch(() => {
-              console.error('REDIS_ERROR: Error in retrieving key: ', key);
+              console.error('REDIS_ERROR: Error in retrieving key: ', this.redisKeyPrefix + key);
               return null;
           }); // eat the error
     }
 
     removeFromCache(key) {
-        return this.redisClient.delAsync(key)
+        return this.redisClient.delAsync(this.redisKeyPrefix + key)
           .catch(() => {
-              console.error('REDIS_ERROR: Error in removing key: ', key);
+              console.error('REDIS_ERROR: Error in removing key: ', this.redisKeyPrefix + key);
               return null;
           }); // eat the error
     }
