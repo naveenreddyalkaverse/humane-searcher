@@ -15,10 +15,24 @@ class SearcherInternal {
         this.logLevel = config.logLevel || 'info';
         this.instanceName = config.instanceName;
 
+        const langFilter = {
+            field: '_lang',
+            termQuery: true,
+            value: (value) => {
+                if (value.secondary) {
+                    return _.union([value.primary], value.secondary);
+                }
+
+                return value.primary;
+            }
+        };
+
         const DefaultTypes = {
             searchQuery: {
+                type: 'searchQuery',
+                index: `${_.toLower(this.instanceName)}:search_query_store`,
                 filters: {
-                    // lang: langFilter,
+                    lang: langFilter,
                     hasResults: {
                         field: 'hasResults',
                         termQuery: true,
@@ -111,17 +125,7 @@ class SearcherInternal {
             }
 
             if (!type.filters.lang) {
-                type.filters.lang = {
-                    field: '_lang',
-                    termQuery: true,
-                    value: (value) => {
-                        if (value.secondary) {
-                            return _.union([value.primary], value.secondary);
-                        }
-
-                        return value.primary;
-                    }
-                };
+                type.filters.lang = langFilter;
             }
         });
 
@@ -690,6 +694,10 @@ class SearcherInternal {
 
         _.forEach(responses.responses, (response) => {
             const result = this._processResponse(response, searchTypesConfig);
+
+            if (!result || !result.type || !result.name || !result.results || result.results.length === 0) {
+                return;
+            }
 
             mergedResult.queryTimeTaken = Math.max(mergedResult.queryTimeTaken || 0, result.queryTimeTaken);
             mergedResult.results[result.name] = result;
