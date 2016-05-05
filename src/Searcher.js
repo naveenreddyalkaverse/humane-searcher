@@ -6,14 +6,125 @@ import {EventEmitter} from 'events';
 import ESClient from './ESClient';
 import * as Constants from './Constants';
 import buildApiSchema from './ApiSchemaBuilder';
+import SearchEventHandler from './SearchEventHandler';
 import LanguageDetector from 'humane-node-commons/lib/LanguageDetector';
 import ValidationError from 'humane-node-commons/lib/ValidationError';
 
 class SearcherInternal {
     constructor(config) {
-        // TODO: compile config, so searcher logic has lesser checks, extend search config with default configs
         this.logLevel = config.logLevel || 'info';
-        this.searchConfig = SearcherInternal.validateSearchConfig(config.searchConfig);
+        this.instanceName = config.instanceName;
+
+        const DefaultTypes = {
+            searchQuery: {
+                filters: {
+                    // lang: langFilter,
+                    hasResults: {
+                        field: 'hasResults',
+                        termQuery: true,
+                        defaultValue: true
+                    }
+                }
+            }
+        };
+
+        const DefaultAutocomplete = {
+            defaultType: '*',
+            types: {
+                searchQuery: {
+                    indexType: DefaultTypes.searchQuery,
+                    queryFields: [
+                        {
+                            field: 'unicodeQuery',
+                            vernacularOnly: true,
+                            weight: 10
+                        },
+                        {
+                            field: 'query',
+                            weight: 9.5
+                        }
+                    ]
+                }
+            }
+        };
+
+        const DefaultSearch = {
+            defaultType: '*'
+        };
+
+        const DefaultViews = {
+            types: {
+                searchQuery: {
+                    indexType: DefaultTypes.searchQuery,
+                    sort: {count: true},
+                    filters: {
+                        hasResults: {
+                            field: 'hasResults',
+                            termQuery: true
+                        }
+                    }
+                }
+            }
+        };
+
+        const DefaultEventHandlers = {
+            search: data => new SearchEventHandler(this.instanceName).handle(data)
+        };
+
+        // TODO: compile config, so searcher logic has lesser checks
+        // this.searchConfig = SearcherInternal.validateSearchConfig(config.searchConfig);
+        this.searchConfig = _.defaultsDeep(config.searchConfig, {
+            types: DefaultTypes,
+            autocomplete: DefaultAutocomplete,
+            search: DefaultSearch,
+            views: DefaultViews
+        });
+
+        const indices = this.searchConfig.indices || {};
+
+        _.forEach(this.searchConfig.types, (type, key) => {
+            if (!type.type) {
+                type.type = key;
+            }
+
+            if (!type.index) {
+                let index = indices[type.type];
+                if (!index) {
+                    // we build index
+                    indices[type.type] = index = {
+                        store: `${_.toLower(this.instanceName)}:${_.snakeCase(type.type)}_store`
+                    };
+                }
+
+                type.index = index.store;
+            }
+
+            if (!type.sort) {
+                type.sort = [];
+            }
+
+            // add push by default
+            type.sort.push('score');
+
+            if (!type.filters) {
+                type.filters = {};
+            }
+
+            if (!type.filters.lang) {
+                type.filters.lang = {
+                    field: '_lang',
+                    termQuery: true,
+                    value: (value) => {
+                        if (value.secondary) {
+                            return _.union([value.primary], value.secondary);
+                        }
+
+                        return value.primary;
+                    }
+                };
+            }
+        });
+
         this.apiSchema = buildApiSchema(config.searchConfig);
         this.esClient = new ESClient(_.pick(config, ['logLevel', 'esConfig', 'redisConfig', 'redisSentinelConfig']));
         this.transliterator = config.transliterator;
@@ -21,29 +132,31 @@ class SearcherInternal {
 
         this.eventEmitter = new EventEmitter();
 
-        // todo: default registry of event handler for storing search queries in DB.
-        if (config.searchConfig.eventHandlers) {
-            _.forEach(config.searchConfig.eventHandlers, (handlerOrArray, eventName) => {
-                if (_.isArray(handlerOrArray)) {
-                    _.forEach(handlerOrArray, handler => this.eventEmitter.addListener(eventName, handler));
-                } else {
-                    this.eventEmitter.addListener(eventName, handlerOrArray);
-                }
-            });
+        this.registerEventHandlers(DefaultEventHandlers);
+        this.registerEventHandlers(config.searchConfig.eventHandlers);
+    }
+
+    registerEventHandlers(eventHandlers) {
+        if (!eventHandlers) {
+            return;
         }
+
+        _.forEach(eventHandlers, (handlerOrArray, eventName) => {
+            if (_.isArray(handlerOrArray)) {
+                _.forEach(handlerOrArray, handler => this.eventEmitter.addListener(eventName, handler));
+            } else {
+                this.eventEmitter.addListener(eventName, handlerOrArray);
+            }
+        });
     }
 
     // TODO: validate it through Joi
     // TODO: provide command line tool to validate config
-    static validateSearchConfig(searchConfig) {
-        if (!searchConfig.inputAnalyzer) {
-            throw new ValidationError('InputAnalyzer must be defined in search config', {details: {code: 'INPUT_ANALYZER_NOT_DEFINED'}});
-        }
+    // validateSearchConfig(searchConfig) {
+    //     return searchConfig;
+    // }
 
-        return searchConfig;
-    }
-
-    static validateInput(input, schema) {
+    validateInput(input, schema) {
         if (!input) {
             throw new ValidationError('No input provided', {details: {code: 'NO_INPUT'}});
         }
@@ -68,13 +181,12 @@ class SearcherInternal {
         return validationResult.value;
     }
 
-    //noinspection JSMethodCanBeStatic
     constantScoreQuery(fieldConfig, query) {
         if (fieldConfig.filter) {
             return query;
         }
 
-        const boost = 1.0 * (fieldConfig.weight || 1.0);
+        const boost = (fieldConfig.weight || 1.0);
 
         if (boost === 1.0) {
             return query;
@@ -87,7 +199,6 @@ class SearcherInternal {
         return this.constantScoreQuery(fieldConfig, fieldConfig.nestedPath ? {nested: {path: fieldConfig.nestedPath, query}} : query);
     }
 
-    //noinspection JSMethodCanBeStatic
     humaneQuery(fieldConfig, text) {
         return {
             humane_query: {
@@ -102,7 +213,6 @@ class SearcherInternal {
         };
     }
 
-    //noinspection JSMethodCanBeStatic
     termQuery(fieldConfig, text) {
         const queryType = _.isArray(text) ? 'terms' : 'term';
         return {
@@ -144,7 +254,6 @@ class SearcherInternal {
         return typeConfig;
     }
 
-    //noinspection JSMethodCanBeStatic
     buildTypeQuery(searchTypeConfig, text) {
         // // TODO: language detection is not needed immediately, but shall be moved to esplugin
         // const languages = this.languageDetector.detect(text);
@@ -168,7 +277,7 @@ class SearcherInternal {
         // };
 
         const indexTypeConfig = searchTypeConfig.indexType;
-        const queryFields = searchTypeConfig.queryFields || indexTypeConfig.queryFields;
+        const queryFields = _(searchTypeConfig.queryFields || indexTypeConfig.queryFields).filter(queryField => !queryField.vernacularOnly).value();
 
         if (!queryFields) {
             throw new ValidationError('No query fields defined', {details: {code: 'NO_QUERY_FIELDS_DEFINED'}});
@@ -193,7 +302,6 @@ class SearcherInternal {
                 multi_humane_query: {
                     query: text,
                     fields: _(queryFields)
-                      .filter(queryField => !queryField.vernacularOnly)
                       .map(queryField => ({
                           field: queryField.field,
                           boost: queryField.weight,
@@ -298,27 +406,30 @@ class SearcherInternal {
         return postFilters;
     }
 
+    defaultSortOrder() {
+        return this.searchConfig.defaultSortOrder || Constants.DESC_SORT_ORDER;
+    }
+
     // todo: handle case of filtering only score based descending order, as it is default anyways
-    //noinspection JSMethodCanBeStatic
-    buildSort(value, defaultSortOrder) {
+    buildSort(value) {
         // array of string
         if (_.isString(value)) {
-            return {[value]: _.lowerCase(defaultSortOrder)};
+            return {[value]: _.lowerCase(this.defaultSortOrder())};
         } else if (_.isObject(value)) {
             // array of sort objects
-            return {[value.field]: _.lowerCase(value.order || defaultSortOrder)};
+            return {[value.field]: _.lowerCase(value.order || this.defaultSortOrder())};
         }
 
         return null;
     }
 
-    buildDefaultSort(config, defaultSortOrder) {
+    buildDefaultSort(config) {
         if (_.isObject(config)) {
             return _(config)
               .map((value, key) => {
                   if (value && (_.isBoolean(value) || _.isObject(value) && value.default)) {
                       // include this key
-                      return this.buildSort(key, defaultSortOrder);
+                      return this.buildSort(key);
                   }
 
                   return null;
@@ -331,15 +442,13 @@ class SearcherInternal {
     }
 
     sortPart(searchTypeConfig, input) {
-        const defaultSortOrder = this.searchConfig.defaultSortOrder || Constants.DESC_SORT_ORDER;
-
         // build sort
         if (input.sort) {
             if (_.isArray(input.sort)) {
-                return _(input.sort).map(value => this.buildSort(value, defaultSortOrder)).filter(value => !!value).value();
+                return _(input.sort).map(value => this.buildSort(value)).filter(value => !!value).value();
             }
 
-            return this.buildSort(input.sort, defaultSortOrder);
+            return this.buildSort(input.sort);
         }
 
         const sortConfigs = searchTypeConfig.sort || searchTypeConfig.indexType.sort;
@@ -349,11 +458,11 @@ class SearcherInternal {
 
         // pick default from sort config
         if (_.isArray(sortConfigs)) {
-            return _(sortConfigs).map(config => this.buildDefaultSort(config, defaultSortOrder)).filter(config => !!config).value();
+            return _(sortConfigs).map(config => this.buildDefaultSort(config)).filter(config => !!config).value();
         }
 
         if (_.isObject(sortConfigs)) {
-            return this.buildDefaultSort(sortConfigs, defaultSortOrder);
+            return this.buildDefaultSort(sortConfigs);
         }
 
         return undefined;
@@ -495,7 +604,7 @@ class SearcherInternal {
                                   }
                               },
                               field_value_factor: {
-                                  field: 'weight',
+                                  field: '_weight',
                                   factor: 2.0,
                                   missing: 1
                               }
@@ -520,19 +629,19 @@ class SearcherInternal {
                 if (first || !type) {
                     type = hit._type;
                     const typeConfig = this.searchConfig.types[type];
-                    name = !!typeConfig ? typeConfig.name || typeConfig.type : type;
+                    name = (typeConfig && (typeConfig.name || typeConfig.type)) || type;
 
                     first = false;
                 }
 
-                results.push(_.defaults(_.pick(hit, ['_id', '_score', '_type']), {_name: name}, hit._source));
+                results.push(_.defaults(_.pick(hit, ['_id', '_score', '_type', '_weight']), {_name: name}, hit._source));
             });
         }
 
-        const searchTypeConfig = searchTypesConfig[type];
+        const searchTypeConfig = type && searchTypesConfig[type];
 
         let facets;
-        if (searchTypeConfig.facets && response.aggregations) {
+        if (searchTypeConfig && searchTypeConfig.facets && response.aggregations) {
             facets = {};
             let facetConfigs = searchTypeConfig.facets;
             if (!_.isArray(facetConfigs)) {
@@ -652,20 +761,20 @@ class SearcherInternal {
     }
 
     autocomplete(headers, input) {
-        const validatedInput = SearcherInternal.validateInput(input, this.apiSchema.autocomplete);
+        const validatedInput = this.validateInput(input, this.apiSchema.autocomplete);
 
         return this._searchInternal(headers, validatedInput, this.searchConfig.autocomplete.types, Constants.AUTOCOMPLETE_EVENT);
     }
 
     search(headers, input) {
-        const validatedInput = SearcherInternal.validateInput(input, this.apiSchema.search);
+        const validatedInput = this.validateInput(input, this.apiSchema.search);
 
         return this._searchInternal(headers, validatedInput, this.searchConfig.search.types, Constants.SEARCH_EVENT);
     }
 
     suggestedQueries(headers, input) {
         // same type as autocomplete
-        const validatedInput = SearcherInternal.validateInput(input, this.apiSchema.autocomplete);
+        const validatedInput = this.validateInput(input, this.apiSchema.autocomplete);
 
         return this._searchInternal(headers, validatedInput, this.searchConfig.autocomplete.types, Constants.SUGGESTED_QUERIES_EVENT)
           .then(response => {
@@ -675,7 +784,7 @@ class SearcherInternal {
                   const relevancyScores = [];
                   _.forEach(response.results, resultGroup => {
                       _.forEach(resultGroup.results, result => {
-                          result._relevancyScore = result._score / (result.weight || 1.0);
+                          result._relevancyScore = result._score / (result._weight || 1.0);
                           relevancyScores.push(result._relevancyScore);
                       });
                   });
@@ -736,15 +845,15 @@ class SearcherInternal {
     }
 
     explainAutocomplete(headers, input) {
-        return this._explain(Constants.AUTOCOMPLETE_API, SearcherInternal.validateInput(input, this.apiSchema.explainAutocomplete));
+        return this._explain(Constants.AUTOCOMPLETE_API, this.validateInput(input, this.apiSchema.explainAutocomplete));
     }
 
     explainSearch(headers, input) {
-        return this._explain(Constants.SEARCH_API, SearcherInternal.validateInput(input, this.apiSchema.explainSearch));
+        return this._explain(Constants.SEARCH_API, this.validateInput(input, this.apiSchema.explainSearch));
     }
 
     termVectors(headers, input) {
-        const validatedInput = SearcherInternal.validateInput(input, this.apiSchema.termVectors);
+        const validatedInput = this.validateInput(input, this.apiSchema.termVectors);
 
         const typeConfig = this.getIndexTypeConfigFromType(validatedInput.type);
 
