@@ -258,7 +258,9 @@ class SearcherInternal {
         return typeConfig;
     }
 
-    buildTypeQuery(searchTypeConfig, text) {
+    buildTypeQuery(searchTypeConfig, text, fuzzySearch) {
+        // console.log('Fuzzy Search: ', fuzzySearch, !fuzzySearch || undefined);
+
         // // TODO: language detection is not needed immediately, but shall be moved to esplugin
         // const languages = this.languageDetector.detect(text);
         //
@@ -295,7 +297,7 @@ class SearcherInternal {
                             query: text,
                             boost: queryField.weight,
                             vernacularOnly: queryField.vernacularOnly,
-                            noFuzzy: queryField.noFuzzy
+                            noFuzzy: !fuzzySearch || queryField.noFuzzy
                         }
                     }
                 })
@@ -311,7 +313,7 @@ class SearcherInternal {
                           boost: queryField.weight,
                           vernacularOnly: queryField.vernacularOnly,
                           path: queryField.nestedPath,
-                          noFuzzy: queryField.noFuzzy
+                          noFuzzy: !fuzzySearch || queryField.noFuzzy
                       }))
                       .value()
 
@@ -576,7 +578,15 @@ class SearcherInternal {
     }
 
     searchQuery(searchTypeConfig, input, text) {
-        return Promise.resolve(this.buildTypeQuery(searchTypeConfig, text))
+        if (this.instanceName === '1mg') {
+            // fix text
+            text = _(text)
+              .replace(/(^|[\s]|[^0-9]|[^a-z])([0-9]+)[\s]+(mg|mcg|ml|%)/gi, '$1$2$3')
+              .replace(/(^|[\s]|[^0-9]|[^a-z])\.([0-9]+)[\s]*(mg|mcg|ml|%)/gi, '$10.$2$3')
+              .trim();
+        }
+
+        return Promise.resolve(this.buildTypeQuery(searchTypeConfig, text, input.fuzzySearch))
           .then(({query, queryLanguages}) => {
               const filter = this.filterPart(searchTypeConfig, input, _.keys(queryLanguages));
 
@@ -780,6 +790,26 @@ class SearcherInternal {
         return this._searchInternal(headers, validatedInput, this.searchConfig.search.types, Constants.SEARCH_EVENT);
     }
 
+    didYouMean(headers, input) {
+        const validatedInput = this.validateInput(input, this.apiSchema.didYouMean);
+
+        const types = this.searchConfig.types;
+
+        let index = null;
+        if (!input.type || input.type === '*') {
+            index = _(types).map(typeConfig => typeConfig.index).filter(indexName => !indexName.match(/search_query_store/)).join(',');
+        } else {
+            const typeConfig = types[input.type];
+            if (!typeConfig) {
+                throw new ValidationError(`No type config found for: ${input.type}`, {details: {code: 'TYPE_CONFIG_NOT_FOUND', type: input.type}});
+            }
+
+            index = typeConfig.index;
+        }
+
+        return Promise.resolve(this.esClient.didYouMean(index, validatedInput.text));
+    }
+
     suggestedQueries(headers, input) {
         // same type as autocomplete
         const validatedInput = this.validateInput(input, this.apiSchema.autocomplete);
@@ -939,6 +969,10 @@ export default class Searcher {
         return this.internal.termVectors(headers, request);
     }
 
+    didYouMean(headers, request) {
+        return this.internal.didYouMean(headers, request);
+    }
+
     view(headers, request) {
         return this.internal.view(headers, request);
     }
@@ -956,6 +990,10 @@ export default class Searcher {
             suggestedQueries: [
                 {handler: this.suggestedQueries},
                 {handler: this.suggestedQueries, method: 'get'}
+            ],
+            didYouMean: [
+                // {handler: this.didYouMean},
+                {handler: this.didYouMean, method: 'get'}
             ],
             'explain/search': [
                 {handler: this.explainSearch},
@@ -981,6 +1019,10 @@ export default class Searcher {
             ':type/suggestedQueries': [
                 {handler: this.suggestedQueries},
                 {handler: this.suggestedQueries, method: 'get'}
+            ],
+            ':type/didYouMean': [
+                // {handler: this.didYouMean},
+                {handler: this.didYouMean, method: 'get'}
             ],
             ':type/view': [
                 {handler: this.view},

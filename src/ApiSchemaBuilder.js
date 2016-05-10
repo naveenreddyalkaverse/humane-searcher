@@ -9,7 +9,8 @@ export default function (searchConfig) {
         requestTime: Joi.number(),
         text: Joi.string().min(1).required(),
         count: Joi.number().default(10).optional(),
-        page: Joi.number().default(0).optional()
+        page: Joi.number().default(0).optional(),
+        fuzzySearch: Joi.boolean().default(true).optional()
     };
 
     //categories: Joi.array().items(Joi.string()).allow(null).optional()
@@ -53,11 +54,18 @@ export default function (searchConfig) {
         id: Joi.string().required()
     };
 
+    const didYouMeanSchema = {
+        requestTime: Joi.number(),
+        type: Joi.string().valid(_.keys(searchConfig.autocomplete.types)).default(searchConfig.autocomplete.defaultType).allow([null, '*']),
+        text: Joi.string().min(1).required()
+    };
+
     return {
         search: Joi.object().keys(searchSchema),
         autocomplete: Joi.object().keys(autocompleteSchema),
         explainSearch: Joi.object().keys(_.omit(_.extend({}, searchSchema, {id: Joi.string().required()}), ['page', 'count'])),
         explainAutocomplete: Joi.object().keys(_.omit(_.extend({}, autocompleteSchema, {id: Joi.string().required()}), ['page', 'count'])),
-        termVectors: Joi.object().keys(termVectorsSchema)
+        termVectors: Joi.object().keys(termVectorsSchema),
+        didYouMean: Joi.object().keys(didYouMeanSchema)
     };
 }
