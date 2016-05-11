@@ -322,7 +322,7 @@ class SearcherInternal {
         };
     }
 
-    filterPart(searchTypeConfig, input, termLanguages) {
+    filterPart(searchTypeConfig, input, termLanguages, facetFilter) {
         const filterConfigs = searchTypeConfig.filters || searchTypeConfig.indexType.filters;
 
         if (!filterConfigs) {
@@ -346,6 +346,16 @@ class SearcherInternal {
             }
 
             if (filterValue) {
+                const filterType = filterValue.type;
+                if (filterValue.values && filterType) {
+                    filterValue = filterValue.values;
+                }
+
+                if (facetFilter && (!filterType || filterType !== 'facet')
+                  || !facetFilter && filterType && filterType === 'facet') {
+                    return true;
+                }
+
                 if (filterConfig.value && _.isFunction(filterConfig.value)) {
                     filterValue = filterConfig.value(filterValue);
                 }
@@ -375,6 +385,7 @@ class SearcherInternal {
         };
     }
 
+    // todo: see the usage of it...
     postFilters(searchTypeConfig, input) {
         const filterConfigs = searchTypeConfig.filters || searchTypeConfig.indexType.filters;
 
@@ -588,8 +599,6 @@ class SearcherInternal {
 
         return Promise.resolve(this.buildTypeQuery(searchTypeConfig, text, input.fuzzySearch))
           .then(({query, queryLanguages}) => {
-              const filter = this.filterPart(searchTypeConfig, input, _.keys(queryLanguages));
-
               const indexTypeConfig = searchTypeConfig.indexType;
 
               let sort = this.sortPart(searchTypeConfig, input) || undefined;
@@ -614,7 +623,7 @@ class SearcherInternal {
                               query: {
                                   bool: {
                                       must: query,
-                                      filter
+                                      filter: this.filterPart(searchTypeConfig, input, _.keys(queryLanguages), false)
                                   }
                               },
                               field_value_factor: {
@@ -624,6 +633,7 @@ class SearcherInternal {
                               }
                           }
                       },
+                      post_filter: this.filterPart(searchTypeConfig, input, _.keys(queryLanguages), true),
                       aggs: facets
                   },
                   queryLanguages
