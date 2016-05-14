@@ -10,6 +10,8 @@ import SearchEventHandler from './SearchEventHandler';
 import LanguageDetector from 'humane-node-commons/lib/LanguageDetector';
 import ValidationError from 'humane-node-commons/lib/ValidationError';
 
+/* eslint-disable no-underscore-dangle */
+
 class SearcherInternal {
     constructor(config) {
         this.logLevel = config.logLevel || 'info';
@@ -462,7 +464,10 @@ class SearcherInternal {
         // build sort
         if (input.sort) {
             if (_.isArray(input.sort)) {
-                return _(input.sort).map(value => this.buildSort(value)).filter(value => !!value).value();
+                return _(input.sort)
+                  .map(value => this.buildSort(value))
+                  .filter(value => !!value)
+                  .value();
             }
 
             return this.buildSort(input.sort);
@@ -475,7 +480,10 @@ class SearcherInternal {
 
         // pick default from sort config
         if (_.isArray(sortConfigs)) {
-            return _(sortConfigs).map(config => this.buildDefaultSort(config)).filter(config => !!config).value();
+            return _(sortConfigs)
+              .map(config => this.buildDefaultSort(config))
+              .filter(config => !!config)
+              .value();
         }
 
         if (_.isObject(sortConfigs)) {
@@ -743,7 +751,10 @@ class SearcherInternal {
         let promise = null;
 
         if (!input.type || input.type === '*') {
-            const searchQueries = _(searchTypeConfigs).values().map(typeConfig => this.searchQuery(typeConfig, input, input.text)).value();
+            const searchQueries = _(searchTypeConfigs)
+              .values()
+              .map(typeConfig => this.searchQuery(typeConfig, input, input.text))
+              .value();
 
             multiSearch = _.isArray(searchQueries) || false;
 
@@ -807,7 +818,10 @@ class SearcherInternal {
 
         let index = null;
         if (!input.type || input.type === '*') {
-            index = _(types).map(typeConfig => typeConfig.index).filter(indexName => !indexName.match(/search_query_store/)).join(',');
+            index = _(types)
+              .map(typeConfig => typeConfig.index)
+              .filter(indexName => !indexName.match(/search_query_store/))
+              .join(',');
         } else {
             const typeConfig = types[input.type];
             if (!typeConfig) {
