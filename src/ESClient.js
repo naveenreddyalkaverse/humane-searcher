@@ -241,14 +241,14 @@ export default class ESClient {
           });
     }
 
-    analyze(index, analyzer, text) {
-        const uri = `/${index}/_analyze?analyzer=${analyzer}&text=${encodeURIComponent(text)}`;
-        return this.request({method: 'GET', uri})
-          .then(ESClient.processResponse)
-          .catch(error => {
-              throw new InternalServiceError('Internal Service Error', {details: error && error.cause || error, stack: error && error.stack});
-          });
-    }
+    // analyze(index, analyzer, text) {
+    //     const uri = `/${index}/_analyze?analyzer=${analyzer}&text=${encodeURIComponent(text)}`;
+    //     return this.request({method: 'GET', uri})
+    //       .then(ESClient.processResponse)
+    //       .catch(error => {
+    //           throw new InternalServiceError('Internal Service Error', {details: error && error.cause || error, stack: error && error.stack});
+    //       });
+    // }
 
 //    curl -XGET 'http://localhost:9200/imdb/movies/_validate/query?rewrite=true' -d '
 //{
