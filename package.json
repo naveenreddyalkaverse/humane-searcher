@@ -14,7 +14,7 @@
   "dependencies": {
     "bluebird": "^3.3.5",
     "events": "^1.1.0",
-    "humane-node-commons": "^1.1.6",
+    "humane-node-commons": "^1.1.7",
     "joi": "^8.1.0",
     "lodash": "^4.12.0",
     "md5": "^2.1.0",
