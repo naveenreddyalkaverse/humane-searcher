@@ -37,18 +37,31 @@ export default class SearchEventHandler {
     }
 
     handle(data) {
-        const {queryData, queryLanguages, queryResult} = data;
+        const {queryData, queryResult} = data;
+        
+        let queryLanguages = data.queryLanguages;
 
         const queryTime = Date.now();
         const hasResults = queryResult && queryResult.totalResults || false;
         const query = _.lowerCase(queryData.text);
         let unicodeQuery = null;
-
-        if (queryLanguages && !_.isEmpty(queryLanguages)) {
-            unicodeQuery = query;
+        
+        if (!queryLanguages) {
+            queryLanguages = [];
         }
 
-        let languages = _.union(queryLanguages || [], queryData.filter.lang.primary || [], queryData.filter.lang.secondary || []);
+        if (!_.isEmpty(queryLanguages)) {
+            unicodeQuery = query;
+        }
+        
+        let primaryLanguage = [];
+        let secondaryLanguages = [];
+        if (queryData.filter && queryData.filter.lang) {
+            primaryLanguage = queryData.filter.lang.primary || primaryLanguage;
+            secondaryLanguages = queryData.filter.lang.secondary || secondaryLanguages;
+        }
+
+        let languages = _.union(queryLanguages, primaryLanguage, secondaryLanguages);
         if (_.isEmpty(languages)) {
             languages = ['en'];
         }

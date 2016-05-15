@@ -70,6 +70,8 @@ export default class ESClient {
             return _response.body;
         }
 
+        // console.error('Error: ', _response.body);
+
         throw new InternalServiceError('Internal Service Error', {_statusCode: _response.statusCode, details: _response.body && _response.body.error || _response.body});
     }
 
@@ -85,8 +87,6 @@ export default class ESClient {
             ret += JSON.stringify(query.search);
             ret += '\n';
         });
-
-        console.log('Multi searching: ', JSON.stringify(queries));
 
         return ret;
     }
@@ -131,7 +131,7 @@ export default class ESClient {
           .then(query => {
               const uri = `/${query.index}/${query.type}/_search`;
 
-              console.log('Search: ', uri, JSON.stringify(query.search));
+              console.log('search: ', uri, JSON.stringify(query.search));
 
               const queryKey = md5(JSON.stringify(query.search));
               const cacheKey = `${uri}:${queryKey}`;
@@ -158,6 +158,7 @@ export default class ESClient {
                 });
           })
           .catch(error => {
+              console.error('Error: ', error, error.stack);
               throw new InternalServiceError('Internal Service Error', {details: error && error.cause || error, stack: error && error.stack});
           });
     }
@@ -197,6 +198,9 @@ export default class ESClient {
         return Promise.all(queriesOrPromise)
           .then((queries) => {
               const uri = '/_msearch';
+
+              console.log('multiSearch: ', JSON.stringify(queries));
+
               const bulkQuery = ESClient.bulkFormat(queries);
 
               const queryKey = md5(bulkQuery);
@@ -237,6 +241,7 @@ export default class ESClient {
                 });
           })
           .catch(error => {
+              console.error('Error: ', error, error.stack);
               throw new InternalServiceError('Internal Service Error', {details: error && error.cause || error, stack: error && error.stack});
           });
     }

@@ -9,7 +9,11 @@ export default function (searchConfig) {
         text: Joi.string().min(1).required(),
         count: Joi.number().default(10).optional(),
         page: Joi.number().default(0).optional(),
-        fuzzySearch: Joi.boolean().default(true).optional()
+        fuzzySearch: Joi.boolean().default(true).optional(),
+        format: Joi.string()
+          .default('default')
+          .valid(['default', 'custom'])
+          .optional()
     };
 
     //categories: Joi.array().items(Joi.string()).allow(null).optional()
@@ -36,16 +40,16 @@ export default function (searchConfig) {
           .keys({
               lang: Joi.object()
                 .keys({
-                    primary: Joi.string()
-                      .required(), secondary: Joi.array()
+                    primary: Joi.string().required(),
+                    secondary: Joi.array()
                       .items(Joi.string())
                       .allow(null)
                       .optional()
                 })
-                .required()
+                .optional()
           })
           .unknown(true)
-          .required(),
+          .optional(),
         unicodeText: Joi.string().allow([null, '']).optional(),
         originalInput: Joi.string().min(1).allow(null)
     });

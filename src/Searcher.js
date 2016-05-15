@@ -140,6 +140,8 @@ class SearcherInternal {
 
         this.registerEventHandlers(DefaultEventHandlers);
         this.registerEventHandlers(config.searchConfig.eventHandlers);
+
+        console.log('Final search config for instance: ', this.instanceName, JSON.stringify(this.searchConfig));
     }
 
     registerEventHandlers(eventHandlers) {
@@ -341,7 +343,7 @@ class SearcherInternal {
 
             let filterValue = null;
 
-            if (input.filter[key]) {
+            if (input.filter && input.filter[key]) {
                 filterValue = input.filter[key];
             } else if (filterConfig.defaultValue) {
                 filterValue = filterConfig.defaultValue;
@@ -376,6 +378,10 @@ class SearcherInternal {
             this.buildFieldQuery(_.extend({filter: true}, filterConfigs.lang), termLanguages, filterQueries);
         }
 
+        if (filterQueries.length === 0) {
+            return undefined;
+        }
+
         if (filterQueries.length === 1) {
             return filterQueries[0];
         }
@@ -405,7 +411,7 @@ class SearcherInternal {
 
             let filterValue = null;
 
-            if (input.filter[key]) {
+            if (input.filter && input.filter[key]) {
                 filterValue = input.filter[key];
             } else if (filterConfig.defaultValue) {
                 filterValue = filterConfig.defaultValue;
@@ -743,14 +749,20 @@ class SearcherInternal {
         return this._processResponse(response, searchTypesConfig);
     }
 
-    _searchInternal(headers, input, searchTypeConfigs, eventName) {
+    _searchInternal(headers, input, searchApiConfig, eventName) {
         let queryLanguages = null;
 
         let multiSearch = false;
 
         let promise = null;
 
+        const searchTypeConfigs = searchApiConfig.types;
+
+        let responsePostProcessor = null;
+
         if (!input.type || input.type === '*') {
+            responsePostProcessor = searchApiConfig.multiResponsePostProcessor;
+
             const searchQueries = _(searchTypeConfigs)
               .values()
               .map(typeConfig => this.searchQuery(typeConfig, input, input.text))
@@ -761,9 +773,12 @@ class SearcherInternal {
             promise = Promise.all(searchQueries);
         } else {
             const searchTypeConfig = searchTypeConfigs[input.type];
+
             if (!searchTypeConfig) {
                 throw new ValidationError(`No type config found for: ${input.type}`, {details: {code: 'SEARCH_CONFIG_NOT_FOUND', type: input.type}});
             }
+
+            responsePostProcessor = searchTypeConfig.responsePostProcessor;
 
             promise = this.searchQuery(searchTypeConfig, input, input.text);
         }
@@ -795,6 +810,10 @@ class SearcherInternal {
           .then(response => {
               this.eventEmitter.emit(eventName, {headers, queryData: input, queryLanguages, queryResult: response});
 
+              if (responsePostProcessor && input.format === 'custom') {
+                return responsePostProcessor(response);
+              }
+
               return response;
           });
     }
@@ -802,13 +821,13 @@ class SearcherInternal {
     autocomplete(headers, input) {
         const validatedInput = this.validateInput(input, this.apiSchema.autocomplete);
 
-        return this._searchInternal(headers, validatedInput, this.searchConfig.autocomplete.types, Constants.AUTOCOMPLETE_EVENT);
+        return this._searchInternal(headers, validatedInput, this.searchConfig.autocomplete, Constants.AUTOCOMPLETE_EVENT);
     }
 
     search(headers, input) {
         const validatedInput = this.validateInput(input, this.apiSchema.search);
 
-        return this._searchInternal(headers, validatedInput, this.searchConfig.search.types, Constants.SEARCH_EVENT);
+        return this._searchInternal(headers, validatedInput, this.searchConfig.search, Constants.SEARCH_EVENT);
     }
 
     didYouMean(headers, input) {
@@ -838,7 +857,7 @@ class SearcherInternal {
         // same type as autocomplete
         const validatedInput = this.validateInput(input, this.apiSchema.autocomplete);
 
-        return this._searchInternal(headers, validatedInput, this.searchConfig.autocomplete.types, Constants.SUGGESTED_QUERIES_EVENT)
+        return this._searchInternal(headers, validatedInput, this.searchConfig.autocomplete, Constants.SUGGESTED_QUERIES_EVENT)
           .then(response => {
               // merge
               if (response.multi) {
