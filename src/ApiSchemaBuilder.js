@@ -63,15 +63,16 @@ export default function (searchConfig) {
           .keys({
               lang: Joi.object()
                 .keys({
-                    primary: Joi.string().required(), secondary: Joi.array()
+                    primary: Joi.string().required(),
+                    secondary: Joi.array()
                       .items(Joi.string())
                       .allow(null)
                       .optional()
                 })
-                .required()
+                .optional()
           })
           .unknown(true)
-          .required(),
+          .optional(),
         count: Joi.number().default(5)
     });
 
