@@ -32,7 +32,7 @@ class SearcherInternal {
         const DefaultTypes = {
             searchQuery: {
                 type: 'searchQuery',
-                index: `${_.toLower(this.instanceName)}:search_query_store`,
+                index: 'search_query',
                 filters: {
                     lang: langFilter,
                     hasResults: {
@@ -103,24 +103,22 @@ class SearcherInternal {
                 type.type = key;
             }
 
-            if (!type.index) {
-                let indexStore = null;
-                if (type.type === 'searchQuery') {
-                    indexStore = `${_.toLower(this.instanceName)}:${_.snakeCase(type.type)}_store`;
-                } else {
-                    indexStore = `${_.toLower(this.instanceName)}_store`;
-                }
-
-                let index = indices[indexStore];
-                if (!index) {
-                    // we build index
-                    indices[indexStore] = index = {
-                        store: indexStore
-                    };
-                }
-
-                type.index = index.store;
+            let indexStore = null;
+            if (type.index) {
+                indexStore = `${_.toLower(this.instanceName)}:${_.snakeCase(type.index)}_store`;
+            } else {
+                indexStore = `${_.toLower(this.instanceName)}_store`;
             }
+
+            let index = indices[indexStore];
+            if (!index) {
+                // we build index
+                indices[indexStore] = index = {
+                    store: indexStore
+                };
+            }
+
+            type.index = index.store;
 
             if (!type.sort) {
                 type.sort = [];
@@ -818,7 +816,7 @@ class SearcherInternal {
               this.eventEmitter.emit(eventName, {headers, queryData: input, queryLanguages, queryResult: response});
 
               if (responsePostProcessor && input.format === 'custom') {
-                return responsePostProcessor(response);
+                  return responsePostProcessor(response);
               }
 
               return response;
