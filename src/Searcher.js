@@ -660,9 +660,11 @@ class SearcherInternal {
           });
     }
 
-    _processResponse(response, searchTypesConfig) {
-        let type = null;
+    _processResponse(response, searchTypesConfig, type) {
+        // let type = null;
         let name = null;
+
+        // console.log('========> Process Response Type: ', type, searchTypesConfig);
 
         const results = [];
 
@@ -677,7 +679,13 @@ class SearcherInternal {
                     first = false;
                 }
 
-                results.push(_.defaults(_.pick(hit, ['_id', '_score', '_type', '_weight']), {_name: name}, hit._source));
+                const source = _(hit._source).omitBy((value, key) => _.startsWith(key, '__') && _.startsWith(key, '__')).value();
+
+                results.push(_.defaults(
+                  _.pick(hit, ['_id', '_score', '_type', '_weight']),
+                  {_name: name},
+                  source
+                ));
             });
         }
 
@@ -698,20 +706,35 @@ class SearcherInternal {
                     return true;
                 }
 
-                if ((facetConfig.type === 'field' || facetConfig.type === 'ranges') && facetConfig.path) {
-                    facet = facet[facetConfig.key];
+                if ((facetConfig.type === 'field' || facetConfig.type === 'ranges') && facetConfig.nestedPath) {
+                    facet = facet.nested;
                 }
 
                 const buckets = facet.buckets;
 
-                facets[facetConfig.key] = _.map(buckets, bucket => ({
-                    key: bucket.key,
-                    count: bucket.doc_count,
-                    from: facet.from,
-                    from_as_string: facet.from_as_string,
-                    to: facet.to,
-                    to_as_string: facet.to_as_string
-                }));
+                if (facetConfig.type === 'filter' || facetConfig.type === 'filters') {
+                    // bucket is an object with key as object key and doc_count as value
+                    const output = facets[facetConfig.key] = [];
+
+                    _.forEach(buckets, (bucket, key) => output.push({
+                        key,
+                        count: bucket.doc_count,
+                        from: facet.from,
+                        from_as_string: facet.from_as_string,
+                        to: facet.to,
+                        to_as_string: facet.to_as_string
+                    }));
+                } else {
+                    // bucket is an array of objects with key and doc_count
+                    facets[facetConfig.key] = _.map(buckets, bucket => ({
+                        key: bucket.key,
+                        count: bucket.doc_count,
+                        from: facet.from,
+                        from_as_string: facet.from_as_string,
+                        to: facet.to,
+                        to_as_string: facet.to_as_string
+                    }));
+                }
 
                 return true;
             });
@@ -720,7 +743,7 @@ class SearcherInternal {
         return {type, name, results, facets, queryTimeTaken: response.took, totalResults: _.get(response, 'hits.total', 0)};
     }
 
-    processMultipleSearchResponse(responses, searchTypesConfig) {
+    processMultipleSearchResponse(responses, searchTypesConfig, types) {
         if (!responses) {
             return null;
         }
@@ -731,8 +754,10 @@ class SearcherInternal {
             results: {}
         };
 
-        _.forEach(responses.responses, (response) => {
-            const result = this._processResponse(response, searchTypesConfig);
+        _.forEach(responses.responses, (response, index) => {
+            const result = this._processResponse(response,
+              searchTypesConfig,
+              types && _.isArray(types) && types.length > index && types.get(index));
 
             if (!result || !result.type || !result.name || !result.results || result.results.length === 0) {
                 return;
@@ -746,12 +771,12 @@ class SearcherInternal {
         return mergedResult;
     }
 
-    processSingleSearchResponse(response, searchTypesConfig) {
+    processSingleSearchResponse(response, searchTypesConfig, type) {
         if (!response) {
             return null;
         }
 
-        return this._processResponse(response, searchTypesConfig);
+        return this._processResponse(response, searchTypesConfig, type);
     }
 
     _searchInternal(headers, input, searchApiConfig, eventName) {
@@ -765,8 +790,15 @@ class SearcherInternal {
 
         let responsePostProcessor = null;
 
+        let type = null;
+
         if (!input.type || input.type === '*') {
             responsePostProcessor = searchApiConfig.multiResponsePostProcessor;
+
+            type = _(searchTypeConfigs)
+              .values()
+              .map(typeConfig => typeConfig.indexType && typeConfig.indexType.type)
+              .value();
 
             const searchQueries = _(searchTypeConfigs)
               .values()
@@ -778,6 +810,8 @@ class SearcherInternal {
             promise = Promise.all(searchQueries);
         } else {
             const searchTypeConfig = searchTypeConfigs[input.type];
+
+            type = searchTypeConfig.indexType && searchTypeConfig.indexType.type;
 
             if (!searchTypeConfig) {
                 throw new ValidationError(`No type config found for: ${input.type}`, {details: {code: 'SEARCH_CONFIG_NOT_FOUND', type: input.type}});
@@ -807,10 +841,10 @@ class SearcherInternal {
           })
           .then((response) => {
               if (multiSearch) {
-                  return this.processMultipleSearchResponse(response, searchTypeConfigs);
+                  return this.processMultipleSearchResponse(response, searchTypeConfigs, type);
               }
 
-              return this.processSingleSearchResponse(response, searchTypeConfigs);
+              return this.processSingleSearchResponse(response, searchTypeConfigs, type);
           })
           .then(response => {
               this.eventEmitter.emit(eventName, {headers, queryData: input, queryLanguages, queryResult: response});
