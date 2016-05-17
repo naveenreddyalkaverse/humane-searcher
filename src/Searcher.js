@@ -755,9 +755,10 @@ class SearcherInternal {
         };
 
         _.forEach(responses.responses, (response, index) => {
+            const type = types && _.isArray(types) && types.length > index && types[index];
             const result = this._processResponse(response,
               searchTypesConfig,
-              types && _.isArray(types) && types.length > index && types.get(index));
+              type);
 
             if (!result || !result.type || !result.name || !result.results || result.results.length === 0) {
                 return;
