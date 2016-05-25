@@ -10,8 +10,6 @@ import SearchEventHandler from './SearchEventHandler';
 import LanguageDetector from 'humane-node-commons/lib/LanguageDetector';
 import ValidationError from 'humane-node-commons/lib/ValidationError';
 
-/* eslint-disable no-underscore-dangle */
-
 class SearcherInternal {
     constructor(config) {
         this.logLevel = config.logLevel || 'info';
@@ -743,7 +741,7 @@ class SearcherInternal {
         return {type, name, results, facets, queryTimeTaken: response.took, totalResults: _.get(response, 'hits.total', 0)};
     }
 
-    processMultipleSearchResponse(responses, searchTypesConfig, types) {
+    processMultipleSearchResponse(responses, searchTypesConfig, types, searchText) {
         if (!responses) {
             return null;
         }
@@ -751,7 +749,8 @@ class SearcherInternal {
         const mergedResult = {
             multi: true,
             totalResults: 0,
-            results: {}
+            results: {},
+            searchText
         };
 
         _.forEach(responses.responses, (response, index) => {
@@ -772,12 +771,12 @@ class SearcherInternal {
         return mergedResult;
     }
 
-    processSingleSearchResponse(response, searchTypesConfig, type) {
+    processSingleSearchResponse(response, searchTypesConfig, type, searchText) {
         if (!response) {
             return null;
         }
 
-        return this._processResponse(response, searchTypesConfig, type);
+        return _.extend(this._processResponse(response, searchTypesConfig, type), {searchText});
     }
 
     _searchInternal(headers, input, searchApiConfig, eventName) {
@@ -842,10 +841,10 @@ class SearcherInternal {
           })
           .then((response) => {
               if (multiSearch) {
-                  return this.processMultipleSearchResponse(response, searchTypeConfigs, type);
+                  return this.processMultipleSearchResponse(response, searchTypeConfigs, type, input.text);
               }
 
-              return this.processSingleSearchResponse(response, searchTypeConfigs, type);
+              return this.processSingleSearchResponse(response, searchTypeConfigs, type, input.text);
           })
           .then(response => {
               this.eventEmitter.emit(eventName, {headers, queryData: input, queryLanguages, queryResult: response});

@@ -9,8 +9,6 @@ import buildRequest from 'humane-node-commons/lib/Request';
 
 import InternalServiceError from 'humane-node-commons/lib/InternalServiceError';
 
-/* eslint-disable no-underscore-dangle */
-
 export default class ESClient {
     constructor(config) {
         this.request = buildRequest(_.extend({}, config.esConfig, {logLevel: config.logLevel, baseUrl: config.esConfig && config.esConfig.url || 'http://localhost:9200'}));
