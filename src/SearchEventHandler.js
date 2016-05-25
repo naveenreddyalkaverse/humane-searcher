@@ -20,7 +20,7 @@ export default class SearchEventHandler {
     }
 
     send(data) {
-        this.request({body: {doc: data}})
+        this.request({body: {doc: data, signal: {name: 'hit'}}})
           .then(response => {
               if (_.isArray(response)) {
                   response = response[0];
