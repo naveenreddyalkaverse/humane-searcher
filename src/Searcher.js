@@ -9,23 +9,24 @@ import buildApiSchema from './ApiSchemaBuilder';
 import SearchEventHandler from './SearchEventHandler';
 import LanguageDetector from 'humane-node-commons/lib/LanguageDetector';
 import ValidationError from 'humane-node-commons/lib/ValidationError';
+import InternalServiceError from 'humane-node-commons/lib/InternalServiceError';
+
+const langFilter = {
+    field: '_lang',
+    termQuery: true,
+    value: (value) => {
+        if (value.secondary) {
+            return _.union([value.primary], value.secondary);
+        }
+
+        return value.primary;
+    }
+};
 
 class SearcherInternal {
     constructor(config) {
         this.logLevel = config.logLevel || 'info';
         this.instanceName = config.instanceName;
-
-        const langFilter = {
-            field: '_lang',
-            termQuery: true,
-            value: (value) => {
-                if (value.secondary) {
-                    return _.union([value.primary], value.secondary);
-                }
-
-                return value.primary;
-            }
-        };
 
         const DefaultTypes = {
             searchQuery: {
@@ -85,53 +86,19 @@ class SearcherInternal {
             search: data => new SearchEventHandler(this.instanceName).handle(data)
         };
 
+        const indices = config.searchConfig.indices || {};
+
+        _.forEach(DefaultTypes, (type, key) => this.enhanceType(indices, key, type));
+        _.forEach(config.searchConfig.types, (type, key) => this.enhanceType(indices, key, type));
+
         // TODO: compile config, so searcher logic has lesser checks
         // this.searchConfig = SearcherInternal.validateSearchConfig(config.searchConfig);
         this.searchConfig = _.defaultsDeep(config.searchConfig, {
+            indices,
             types: DefaultTypes,
             autocomplete: DefaultAutocomplete,
             search: DefaultSearch,
             views: DefaultViews
-        });
-
-        const indices = this.searchConfig.indices || {};
-
-        _.forEach(this.searchConfig.types, (type, key) => {
-            if (!type.type) {
-                type.type = key;
-            }
-
-            let indexStore = null;
-            if (type.index) {
-                indexStore = `${_.toLower(this.instanceName)}:${_.snakeCase(type.index)}_store`;
-            } else {
-                indexStore = `${_.toLower(this.instanceName)}_store`;
-            }
-
-            let index = indices[indexStore];
-            if (!index) {
-                // we build index
-                indices[indexStore] = index = {
-                    store: indexStore
-                };
-            }
-
-            type.index = index.store;
-
-            if (!type.sort) {
-                type.sort = [];
-            }
-
-            // add push by default
-            type.sort.push('score');
-
-            if (!type.filters) {
-                type.filters = {};
-            }
-
-            if (!type.filters.lang) {
-                type.filters.lang = langFilter;
-            }
         });
 
         this.apiSchema = buildApiSchema(config.searchConfig);
@@ -144,7 +111,45 @@ class SearcherInternal {
         this.registerEventHandlers(DefaultEventHandlers);
         this.registerEventHandlers(config.searchConfig.eventHandlers);
 
-        console.log('Final search config for instance: ', this.instanceName, JSON.stringify(this.searchConfig));
+        // console.log('Final search config for instance: ', this.instanceName, JSON.stringify(this.searchConfig, null, 2));
+    }
+
+    enhanceType(indices, key, type) {
+        if (!type.type) {
+            type.type = key;
+        }
+
+        let index = indices[type.type];
+        if (!index) {
+            let indexStore = null;
+            if (type.index) {
+                indexStore = `${_.toLower(this.instanceName)}:${_.snakeCase(type.index)}_store`;
+            } else {
+                indexStore = `${_.toLower(this.instanceName)}_store`;
+            }
+
+            // we build index
+            indices[type.type] = index = {
+                store: indexStore
+            };
+        }
+
+        type.index = index.store;
+
+        if (!type.sort) {
+            type.sort = [];
+        }
+
+        // add push by default
+        type.sort.push('score');
+
+        if (!type.filters) {
+            type.filters = {};
+        }
+
+        if (!type.filters.lang) {
+            type.filters.lang = langFilter;
+        }
     }
 
     registerEventHandlers(eventHandlers) {
@@ -266,6 +271,10 @@ class SearcherInternal {
     }
 
     buildTypeQuery(searchTypeConfig, text, fuzzySearch) {
+        if (!text || _.isEmpty(text)) {
+            return {};
+        }
+
         // console.log('Fuzzy Search: ', fuzzySearch, !fuzzySearch || undefined);
 
         // // TODO: language detection is not needed immediately, but shall be moved to esplugin
@@ -605,8 +614,10 @@ class SearcherInternal {
         return facets;
     }
 
-    searchQuery(searchTypeConfig, input, text) {
-        if (this.instanceName === '1mg') {
+    searchQuery(searchTypeConfig, input) {
+        let text = input.text;
+
+        if (this.instanceName === '1mg' && text) {
             // fix text
             text = _(text)
               .replace(/(^|[\s]|[^0-9]|[^a-z])([0-9]+)[\s]+(mg|mcg|ml|%)/gi, '$1$2$3')
@@ -639,7 +650,9 @@ class SearcherInternal {
                           function_score: {
                               query: {
                                   bool: {
-                                      must: query,
+                                      must: query || {
+                                          match_all: {}
+                                      },
                                       filter: this.filterPart(searchTypeConfig, input, _.keys(queryLanguages), false)
                                   }
                               },
@@ -741,7 +754,7 @@ class SearcherInternal {
         return {type, name, results, facets, queryTimeTaken: response.took, totalResults: _.get(response, 'hits.total', 0)};
     }
 
-    processMultipleSearchResponse(responses, searchTypesConfig, types, searchText) {
+    processMultipleSearchResponse(responses, searchTypesConfig, types, input) {
         if (!responses) {
             return null;
         }
@@ -750,7 +763,11 @@ class SearcherInternal {
             multi: true,
             totalResults: 0,
             results: {},
-            searchText
+            searchText: input.text,
+            filter: input.filter,
+            sort: input.sort,
+            page: input.page,
+            count: 0
         };
 
         _.forEach(responses.responses, (response, index) => {
@@ -766,17 +783,26 @@ class SearcherInternal {
             mergedResult.queryTimeTaken = Math.max(mergedResult.queryTimeTaken || 0, result.queryTimeTaken);
             mergedResult.results[result.name] = result;
             mergedResult.totalResults += result.totalResults;
+            mergedResult.count += result && result.length;
         });
 
         return mergedResult;
     }
 
-    processSingleSearchResponse(response, searchTypesConfig, type, searchText) {
+    processSingleSearchResponse(response, searchTypesConfig, type, input) {
         if (!response) {
             return null;
         }
 
-        return _.extend(this._processResponse(response, searchTypesConfig, type), {searchText});
+        const finalResponse = this._processResponse(response, searchTypesConfig, type);
+
+        return _.extend(finalResponse, {
+            searchText: input.text,
+            filter: input.filter,
+            sort: input.sort,
+            page: input.page,
+            count: finalResponse && finalResponse.results && finalResponse.results.length
+        });
     }
 
     _searchInternal(headers, input, searchApiConfig, eventName) {
@@ -802,7 +828,7 @@ class SearcherInternal {
 
             const searchQueries = _(searchTypeConfigs)
               .values()
-              .map(typeConfig => this.searchQuery(typeConfig, input, input.text))
+              .map(typeConfig => this.searchQuery(typeConfig, input))
               .value();
 
             multiSearch = _.isArray(searchQueries) || false;
@@ -819,7 +845,7 @@ class SearcherInternal {
 
             responsePostProcessor = searchTypeConfig.responsePostProcessor;
 
-            promise = this.searchQuery(searchTypeConfig, input, input.text);
+            promise = this.searchQuery(searchTypeConfig, input);
         }
 
         return Promise.resolve(promise)
@@ -841,10 +867,10 @@ class SearcherInternal {
           })
           .then((response) => {
               if (multiSearch) {
-                  return this.processMultipleSearchResponse(response, searchTypeConfigs, type, input.text);
+                  return this.processMultipleSearchResponse(response, searchTypeConfigs, type, input);
               }
 
-              return this.processSingleSearchResponse(response, searchTypeConfigs, type, input.text);
+              return this.processSingleSearchResponse(response, searchTypeConfigs, type, input);
           })
           .then(response => {
               this.eventEmitter.emit(eventName, {headers, queryData: input, queryLanguages, queryResult: response});
@@ -867,6 +893,18 @@ class SearcherInternal {
         const validatedInput = this.validateInput(input, this.apiSchema.search);
 
         return this._searchInternal(headers, validatedInput, this.searchConfig.search, Constants.SEARCH_EVENT);
+    }
+
+    formSearch(headers, input) {
+        const validatedInput = this.validateInput(input, this.apiSchema.formSearch);
+
+        return this._searchInternal(headers, validatedInput, this.searchConfig.search, Constants.FORM_SEARCH_EVENT);
+    }
+
+    browseAll(headers, input) {
+        const validatedInput = this.validateInput(input, this.apiSchema.browseAll);
+
+        return this._searchInternal(headers, validatedInput, this.searchConfig.search, Constants.BROWSE_ALL_EVENT);
     }
 
     didYouMean(headers, input) {
@@ -1003,6 +1041,8 @@ class SearcherInternal {
             results: []
         };
 
+        console.log('=======> View: ', JSON.stringify(indexTypeConfig));
+
         return this.esClient.allPages(indexTypeConfig.index, indexTypeConfig.type, query, 100,
           (response) => {
               if (response && response.hits && response.hits.hits) {
@@ -1027,36 +1067,57 @@ export default class Searcher {
         this.internal = new SearcherInternal(searchConfig);
     }
 
+    errorWrap(promise) {
+        return Promise.resolve(promise)
+          .catch(error => {
+              console.error('>>> Error', error, error.stack);
+              if (error && (error._errorCode === 'VALIDATION_ERROR' || error._errorCode === 'INTERNAL_SERVICE_ERROR')) {
+                  // rethrow same error
+                  throw error;
+              }
+
+              throw new InternalServiceError('Internal Service Error', {details: error && error.cause || error, stack: error && error.stack});
+          });
+    }
+
     search(headers, request) {
-        return this.internal.search(headers, request);
+        return this.errorWrap(this.internal.search(headers, request));
+    }
+
+    formSearch(headers, request) {
+        return this.errorWrap(this.internal.formSearch(headers, request));
+    }
+
+    browseAll(headers, request) {
+        return this.errorWrap(this.internal.browseAll(headers, request));
     }
 
     autocomplete(headers, request) {
-        return this.internal.autocomplete(headers, request);
+        return this.errorWrap(this.internal.autocomplete(headers, request));
     }
 
     suggestedQueries(headers, request) {
-        return this.internal.suggestedQueries(headers, request);
+        return this.errorWrap(this.internal.suggestedQueries(headers, request));
     }
 
     explainAutocomplete(headers, request) {
-        return this.internal.explainAutocomplete(headers, request);
+        return this.errorWrap(this.internal.explainAutocomplete(headers, request));
     }
 
     explainSearch(headers, request) {
-        return this.internal.explainSearch(headers, request);
+        return this.errorWrap(this.internal.explainSearch(headers, request));
     }
 
     termVectors(headers, request) {
-        return this.internal.termVectors(headers, request);
+        return this.errorWrap(this.internal.termVectors(headers, request));
     }
 
     didYouMean(headers, request) {
-        return this.internal.didYouMean(headers, request);
+        return this.errorWrap(this.internal.didYouMean(headers, request));
     }
 
     view(headers, request) {
-        return this.internal.view(headers, request);
+        return this.errorWrap(this.internal.view(headers, request));
     }
 
     registry() {
@@ -1068,6 +1129,14 @@ export default class Searcher {
             search: [
                 {handler: this.search},
                 {handler: this.search, method: 'get'}
+            ],
+            formSearch: [
+                {handler: this.formSearch},
+                {handler: this.formSearch, method: 'get'}
+            ],
+            browseAll: [
+                {handler: this.browseAll},
+                {handler: this.browseAll, method: 'get'}
             ],
             suggestedQueries: [
                 {handler: this.suggestedQueries},

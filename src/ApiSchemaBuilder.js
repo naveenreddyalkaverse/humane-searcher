@@ -6,10 +6,8 @@ import * as Constants from './Constants';
 export default function (searchConfig) {
     const baseSchema = {
         requestTime: Joi.number(),
-        text: Joi.string().min(1).required(),
         count: Joi.number().default(10).optional(),
         page: Joi.number().default(0).optional(),
-        fuzzySearch: Joi.boolean().default(true).optional(),
         format: Joi.string()
           .default('default')
           .valid(['default', 'custom'])
@@ -25,6 +23,8 @@ export default function (searchConfig) {
           .default(Constants.ORGANIC_MODE)
           .allow(null),
         lang: Joi.string().allow(null),
+        text: Joi.string().min(1).required(),
+        fuzzySearch: Joi.boolean().default(true).optional(),
         type: Joi.string()
           .valid(_.keys(searchConfig.search.types))
           .default(searchConfig.search.defaultType)
@@ -54,7 +54,51 @@ export default function (searchConfig) {
         originalInput: Joi.string().min(1).allow(null)
     });
 
+    const formSearchSchema = _.extend({}, baseSchema, {
+        type: Joi.string()
+          .valid(_.keys(searchConfig.search.types))
+          .default(searchConfig.search.defaultType)
+          .allow([null, '*']),
+        sort: Joi.object()
+          .keys({
+              field: Joi.string()
+              //.valid([Constants.SCORE_SORT_FIELD]) // todo: this is contextual to user and type
+                .default(Constants.SCORE_SORT_FIELD),
+              order: Joi.string().valid(Constants.VALID_SORT_ORDERS).default(Constants.DESC_SORT_ORDER)
+          }),
+        filter: Joi.object()// todo: these are contextual to user and type and autocomplete vs search
+          .keys({
+              lang: Joi.object()
+                .keys({
+                    primary: Joi.string().required(),
+                    secondary: Joi.array()
+                      .items(Joi.string())
+                      .allow(null)
+                      .optional()
+                })
+                .optional()
+          })
+          .unknown(true)
+          .optional()
+    });
+
+    const browseAllSchema = _.extend({}, baseSchema, {
+        type: Joi.string()
+          .valid(_.keys(searchConfig.search.types))
+          .default(searchConfig.search.defaultType)
+          .allow([null, '*']),
+        sort: Joi.object()
+          .keys({
+              field: Joi.string()
+              //.valid([Constants.SCORE_SORT_FIELD]) // todo: this is contextual to user and type
+                .default(Constants.SCORE_SORT_FIELD),
+              order: Joi.string().valid(Constants.VALID_SORT_ORDERS).default(Constants.DESC_SORT_ORDER)
+          })
+    });
+
     const autocompleteSchema = _.extend({}, baseSchema, {
+        text: Joi.string().min(1).required(),
+        fuzzySearch: Joi.boolean().default(true).optional(),
         type: Joi.string()
           .valid(_.keys(searchConfig.autocomplete.types))
           .default(searchConfig.autocomplete.defaultType)
@@ -94,6 +138,8 @@ export default function (searchConfig) {
     return {
         search: Joi.object().keys(searchSchema),
         autocomplete: Joi.object().keys(autocompleteSchema),
+        formSearch: Joi.object().keys(formSearchSchema),
+        browseAll: Joi.object().keys(browseAllSchema),
         explainSearch: Joi.object().keys(_.omit(_.extend({}, searchSchema, {id: Joi.string().required()}), ['page', 'count'])),
         explainAutocomplete: Joi.object().keys(_.omit(_.extend({}, autocompleteSchema, {id: Joi.string().required()}), ['page', 'count'])),
         termVectors: Joi.object().keys(termVectorsSchema),
