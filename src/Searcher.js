@@ -94,7 +94,6 @@ class SearcherInternal {
         // TODO: compile config, so searcher logic has lesser checks
         // this.searchConfig = SearcherInternal.validateSearchConfig(config.searchConfig);
         this.searchConfig = _.defaultsDeep(config.searchConfig, {
-            indices,
             types: DefaultTypes,
             autocomplete: DefaultAutocomplete,
             search: DefaultSearch,
@@ -1166,6 +1165,14 @@ export default class Searcher {
             ':type/search': [
                 {handler: this.search},
                 {handler: this.search, method: 'get'}
+            ],
+            ':type/formSearch': [
+                {handler: this.formSearch},
+                {handler: this.formSearch, method: 'get'}
+            ],
+            ':type/browseAll': [
+                {handler: this.browseAll},
+                {handler: this.browseAll, method: 'get'}
             ],
             ':type/suggestedQueries': [
                 {handler: this.suggestedQueries},
