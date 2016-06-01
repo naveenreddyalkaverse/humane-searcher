@@ -11,7 +11,8 @@ export default function (searchConfig) {
         format: Joi.string()
           .default('default')
           .valid(['default', 'custom'])
-          .optional()
+          .optional(),
+        instanceName: Joi.string().default('default')
     };
 
     //categories: Joi.array().items(Joi.string()).allow(null).optional()
