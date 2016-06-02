@@ -221,7 +221,8 @@ class SearcherInternal {
                     query: text,
                     boost: fieldConfig.weight,
                     vernacularOnly: fieldConfig.vernacularOnly,
-                    path: fieldConfig.nestedPath,
+
+                    //path: fieldConfig.nestedPath,
                     noFuzzy: fieldConfig.noFuzzy
                 }
             }
@@ -237,17 +238,16 @@ class SearcherInternal {
         };
     }
 
-    query(fieldConfig, text) {
-        // only for filter we allow termQuery
+    buildFieldQuery(fieldConfig, englishTerm, queries) {
+        let query = null;
+
         if (fieldConfig.termQuery && fieldConfig.filter) {
-            return this.termQuery(fieldConfig, text);
+            query = this.termQuery(fieldConfig, englishTerm);
+        } else {
+            query = this.humaneQuery(fieldConfig, englishTerm);
         }
 
-        return this.humaneQuery(fieldConfig, text);
-    }
-
-    buildFieldQuery(fieldConfig, englishTerm, queries) {
-        const query = this.wrapQuery(fieldConfig, this.query(fieldConfig, englishTerm));
+        query = this.wrapQuery(fieldConfig, query);
 
         if (queries) {
             if (_.isArray(query)) {
@@ -1018,6 +1018,22 @@ class SearcherInternal {
           .then((response) => response && response.term_vectors || null);
     }
 
+    get(headers, input) {
+        // TODO: validate input
+        if (!input.id) {
+            throw new ValidationError('No ID has been specified', {details: {code: 'UNDEFINED_ID'}});
+        }
+
+        if (!input.type) {
+            throw new ValidationError('No Type has been specified', {details: {code: 'UNDEFINED_TYPE'}});
+        }
+
+        const typeConfig = this.getIndexTypeConfigFromType(input.type);
+
+        return Promise.resolve(this.esClient.get(typeConfig.index, typeConfig.type, input.id))
+          .then((response) => response && response._source || null);
+    }
+
     // TODO: create schema to validate view input
     view(headers, input) {
         const type = input.type;
@@ -1077,6 +1093,10 @@ export default class Searcher {
 
               throw new InternalServiceError('Internal Service Error', {details: error && error.cause || error, stack: error && error.stack});
           });
+    }
+
+    get(headers, request) {
+        return this.errorWrap(this.internal.get(headers, request));
     }
 
     search(headers, request) {
@@ -1186,7 +1206,9 @@ export default class Searcher {
                 {handler: this.view},
                 {handler: this.view, method: 'get'}
             ],
-            ':type/:id/termVectors': {handler: this.termVectors, method: 'get'}
+            ':type/:id/termVectors': {handler: this.termVectors, method: 'get'},
+            ':type/:id': {handler: this.get, method: 'get'},
+            '/': {handler: this.get, method: 'get'}
         };
     }
 }

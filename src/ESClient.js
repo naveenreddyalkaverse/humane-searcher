@@ -172,6 +172,15 @@ export default class ESClient {
           });
     }
 
+    get(index, type, id) {
+        const uri = `/${index}/${type}/${id}`;
+
+        return this.request({method: 'GET', uri}).then(ESClient.processResponse)
+          .catch(error => {
+              throw new InternalServiceError('Internal Service Error', {details: error && error.cause || error, stack: error && error.stack});
+          });
+    }
+
     termVectors(index, type, id) {
         const uri = `/${index}/${type}/${id}/_termvectors?fields=*`;
 
