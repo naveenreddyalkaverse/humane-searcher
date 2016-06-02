@@ -15,17 +15,17 @@
     "bluebird": "^3.4.0",
     "events": "^1.1.0",
     "humane-node-commons": "^1.1.8",
-    "joi": "^8.1.1",
+    "joi": "^8.4.0",
     "lodash": "^4.13.1",
     "md5": "^2.1.0",
     "performance-now": "^0.2.0"
   },
   "devDependencies": {
-    "babel-core": "^6.9.0",
+    "babel-core": "^6.9.1",
     "babel-plugin-transform-runtime": "^6.9.0",
     "babel-preset-node5": "^11.1.0",
-    "eslint": "^2.10.2",
-    "eslint-config-360fy": "^1.1.6",
+    "eslint": "^2.11.1",
+    "eslint-config-360fy": "^1.1.9",
     "eslint-plugin-react": "^5.1.1"
   },
   "eslintConfig": {
