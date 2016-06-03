@@ -173,9 +173,32 @@ export default class ESClient {
     }
 
     get(index, type, id) {
+        const startTime = performanceNow();
+
         const uri = `/${index}/${type}/${id}`;
 
-        return this.request({method: 'GET', uri}).then(ESClient.processResponse)
+        const cacheKey = md5(uri);
+
+        return this.retrieveFromCache(cacheKey)
+          .then(cacheResponse => {
+              if (cacheResponse) {
+                  cacheResponse.took = _.round(performanceNow() - startTime, 3);
+
+                  console.log('get: Retrieved from cache in (ms): ', cacheResponse.took);
+
+                  return cacheResponse;
+              }
+
+              return this.request({method: 'GET', uri})
+                .then(ESClient.processResponse)
+                .then(getResponse => {
+                    if (getResponse) {
+                        return this.storeInCache(cacheKey, getResponse);
+                    }
+
+                    return null;
+                });
+          })
           .catch(error => {
               throw new InternalServiceError('Internal Service Error', {details: error && error.cause || error, stack: error && error.stack});
           });

@@ -124,7 +124,8 @@ export default function (searchConfig) {
     const termVectorsSchema = {
         requestTime: Joi.number(),
         type: Joi.string().valid(_.keys(searchConfig.types)).required(),
-        id: Joi.string().required()
+        id: Joi.string().required(),
+        instanceName: Joi.string().default('default')
     };
 
     const didYouMeanSchema = {
@@ -133,7 +134,8 @@ export default function (searchConfig) {
           .valid(_.keys(searchConfig.autocomplete.types))
           .default(searchConfig.autocomplete.defaultType)
           .allow([null, '*']),
-        text: Joi.string().min(1).required()
+        text: Joi.string().min(1).required(),
+        instanceName: Joi.string().default('default')
     };
 
     return {

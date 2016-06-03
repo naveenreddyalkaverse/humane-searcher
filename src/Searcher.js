@@ -670,6 +670,25 @@ class SearcherInternal {
           });
     }
 
+    _processSource(hit, name) {
+        if (!hit._source) {
+            return null;
+        }
+
+        const source = _(hit._source)
+          .omitBy((value, key) => _.startsWith(key, '__') && _.startsWith(key, '__'))
+          .mapValues((value, key) => {
+              if (key === '_hourlyStats' || key === '_dailyStats' || key === '_weeklyStats' || key === '_monthlyStats') {
+                  return _.map(value, childValue => _.omit(childValue, 'lastNStats'));
+              }
+
+              return value;
+          })
+          .value();
+
+        return _.defaults(_.pick(hit, ['_id', '_score', '_type', '_weight']), {_name: name}, source);
+    }
+
     _processResponse(response, searchTypesConfig, type) {
         // let type = null;
         let name = null;
@@ -689,13 +708,7 @@ class SearcherInternal {
                     first = false;
                 }
 
-                const source = _(hit._source).omitBy((value, key) => _.startsWith(key, '__') && _.startsWith(key, '__')).value();
-
-                results.push(_.defaults(
-                  _.pick(hit, ['_id', '_score', '_type', '_weight']),
-                  {_name: name},
-                  source
-                ));
+                results.push(this._processSource(hit, name));
             });
         }
 
@@ -1019,7 +1032,7 @@ class SearcherInternal {
     }
 
     get(headers, input) {
-        // TODO: validate input
+        // TODO: validate input with schema
         if (!input.id) {
             throw new ValidationError('No ID has been specified', {details: {code: 'UNDEFINED_ID'}});
         }
@@ -1031,7 +1044,7 @@ class SearcherInternal {
         const typeConfig = this.getIndexTypeConfigFromType(input.type);
 
         return Promise.resolve(this.esClient.get(typeConfig.index, typeConfig.type, input.id))
-          .then((response) => response && response._source || null);
+          .then((response) => response && this._processSource(response, (typeConfig && (typeConfig.name || typeConfig.type)) || input.type) || null);
     }
 
     // TODO: create schema to validate view input
