@@ -446,68 +446,66 @@ class SearcherInternal {
         return this.searchConfig.defaultSortOrder || Constants.DESC_SORT_ORDER;
     }
 
+    sortOrder(order) {
+        if (order) {
+            return _.lowerCase(order);
+        }
+
+        return _.lowerCase(this.defaultSortOrder());
+    }
+
     // todo: handle case of filtering only score based descending order, as it is default anyways
-    buildSort(value) {
+    buildSort(config, order) {
         // array of string
-        if (_.isString(value)) {
-            return {[value]: _.lowerCase(this.defaultSortOrder())};
-        } else if (_.isObject(value)) {
-            // array of sort objects
-            return {[value.field]: _.lowerCase(value.order || this.defaultSortOrder())};
-        }
-
-        return null;
-    }
-
-    buildDefaultSort(config) {
-        if (_.isObject(config)) {
-            return _(config)
-              .map((value, key) => {
-                  if (value && (_.isBoolean(value) || _.isObject(value) && value.default)) {
-                      // include this key
-                      return this.buildSort(key);
-                  }
-
-                  return null;
-              })
-              .filter(value => !!value)
-              .value();
-        }
-
-        return null;
-    }
-
-    sortPart(searchTypeConfig, input) {
-        // build sort
-        if (input.sort) {
-            if (_.isArray(input.sort)) {
-                return _(input.sort)
-                  .map(value => this.buildSort(value))
-                  .filter(value => !!value)
-                  .value();
+        if (_.isString(config)) {
+            return {
+                [config]: this.sortOrder(order)
+            };
+        } else if (_.isObject(config)) {
+            if (config.sortFn && _.isFunction(config.sortFn)) {
+                return config.sortFn(this.sortOrder(order));
             }
-
-            return this.buildSort(input.sort);
-        }
-
-        const sortConfigs = searchTypeConfig.sort || searchTypeConfig.indexType.sort;
-        if (!sortConfigs) {
-            return undefined;
-        }
-
-        // pick default from sort config
-        if (_.isArray(sortConfigs)) {
-            return _(sortConfigs)
-              .map(config => this.buildDefaultSort(config))
-              .filter(config => !!config)
-              .value();
-        }
-
-        if (_.isObject(sortConfigs)) {
-            return this.buildDefaultSort(sortConfigs);
+            return {
+                [config.field]: this.sortOrder(order)
+            };
         }
 
         return undefined;
+    }
+
+    buildDefaultSort(configOrArray) {
+        // config is an array...
+        return _(configOrArray)
+          .filter(config => _.isObject(config) && config.default)
+          .map(config => this.buildSort(config))
+          .value();
+    }
+
+    sortPart(searchTypeConfig, input) {
+        const sortConfigs = searchTypeConfig.sort || searchTypeConfig.indexType.sort;
+        if (!sortConfigs || !_.isArray(sortConfigs)) {
+            return undefined;
+        }
+
+        // build sort
+        if (input.sort && input.sort.field) {
+            const matchingConfig = _.find(sortConfigs, (config) => {
+                if (_.isString(config) && config === input.sort.field
+                  || _.isObject(config) && config.field === input.sort.field) {
+                    return config;
+                }
+
+                return null;
+            });
+
+            if (matchingConfig) {
+                return this.buildSort(matchingConfig, input.sort.order);
+            }
+
+            return undefined;
+        }
+
+        return this.buildDefaultSort(sortConfigs);
     }
 
     facet(facetConfig) {
