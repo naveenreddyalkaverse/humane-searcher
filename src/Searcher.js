@@ -677,7 +677,7 @@ class SearcherInternal {
           .omitBy((value, key) => _.startsWith(key, '__') && _.startsWith(key, '__'))
           .mapValues((value, key) => {
               if (key === '_hourlyStats' || key === '_dailyStats' || key === '_weeklyStats' || key === '_monthlyStats') {
-                  return _.map(value, childValue => _.omit(childValue, 'lastNStats'));
+                  return _.mapValues(value, childValue => _.omit(childValue, 'lastNStats'));
               }
 
               return value;
