@@ -12,7 +12,7 @@ export default function (searchConfig) {
           .default('default')
           .valid(['default', 'custom'])
           .optional(),
-        instanceName: Joi.string().default('default')
+        __instanceName__: Joi.string().default('default')
     };
 
     //categories: Joi.array().items(Joi.string()).allow(null).optional()
@@ -125,7 +125,7 @@ export default function (searchConfig) {
         requestTime: Joi.number(),
         type: Joi.string().valid(_.keys(searchConfig.types)).required(),
         id: Joi.string().required(),
-        instanceName: Joi.string().default('default')
+        __instanceName__: Joi.string().default('default')
     };
 
     const didYouMeanSchema = {
@@ -135,7 +135,7 @@ export default function (searchConfig) {
           .default(searchConfig.autocomplete.defaultType)
           .allow([null, '*']),
         text: Joi.string().min(1).required(),
-        instanceName: Joi.string().default('default')
+        __instanceName__: Joi.string().default('default')
     };
 
     return {
