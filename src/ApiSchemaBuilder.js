@@ -16,9 +16,11 @@ export default function (searchConfig) {
     //.when('mode', {is: AUTOCOMPLETE_MODE, then: Joi.required(), otherwise: Joi.optional()})
     //  .when('mode', {is: SEARCH_RESULT_MODE, then: Joi.required(), otherwise: Joi.optional()}),
     const searchSchema = _.extend({}, baseSchema, {
-        mode: Joi.string().valid(Constants.VALID_MODES).default(Constants.ORGANIC_MODE).allow(null),
+        mode: Joi.string().valid(Constants.VALID_MODES).default(Constants.ORGANIC_MODE).
+                                    allow(null),
         lang: Joi.string().allow(null),
-        type: Joi.string().valid(_.keys(searchConfig.search.types)).default(searchConfig.search.defaultType).allow([null, '*']),
+        type: Joi.string().valid(_.keys(searchConfig.search.types)).default(searchConfig.search.defaultType).
+                                    allow([null, '*']),
         sort: Joi.object()
           .keys({
               field: Joi.string()
@@ -28,19 +30,24 @@ export default function (searchConfig) {
           }),
         filter: Joi.object()// todo: these are contextual to user and type and autocomplete vs search
           .keys({
-              lang: Joi.object().keys({primary: Joi.string().required(), secondary: Joi.array().items(Joi.string()).allow(null).optional()}).required()
+              lang: Joi.object().keys({primary: Joi.string().required(), secondary: Joi.array().items(Joi.string()).
+                        allow(null).optional()}).required()
           })
           .unknown(true)
           .required(),
-        unicodeText: Joi.string().allow([null, '']).optional(),
-        originalInput: Joi.string().min(1).allow(null)
+        unicodeText: Joi.string().allow([null, '']).
+                    optional(),
+        originalInput: Joi.string().min(1).
+                    allow(null)
     });
 
     const autocompleteSchema = _.extend({}, baseSchema, {
-        type: Joi.string().valid(_.keys(searchConfig.autocomplete.types)).default(searchConfig.autocomplete.defaultType).allow([null, '*']),
+        type: Joi.string().valid(_.keys(searchConfig.autocomplete.types)).default(searchConfig.autocomplete.defaultType).
+                        allow([null, '*']),
         filter: Joi.object()// todo: these are contextual to user and type and autocomplete vs search
           .keys({
-              lang: Joi.object().keys({primary: Joi.string().required(), secondary: Joi.array().items(Joi.string()).allow(null).optional()}).required()
+              lang: Joi.object().keys({primary: Joi.string().required(), secondary: Joi.array().items(Joi.string()).
+                        allow(null).optional()}).required()
           })
           .unknown(true)
           .required(),

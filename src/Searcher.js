@@ -573,20 +573,21 @@ class SearcherInternal {
         return this._transform(this._searchInternal(headers, validatedInput, this.searchConfig.search, Constants.SEARCH_EVENT),minify);
     }
 
-    _transform(response , minify){
+    _transform(response , minify) {
 
         var tran = response;
 
-        if( tran.multi==true){
+        if (tran.multi == true) {
 
-        }else{
-           let t =  tran.totalResults;
+        } else {
+            let t = tran.totalResults;
             tran['code'] = t;
             delete tran['totalResults'];
-        if(minify){
+            if (minify) {
 
+            }
+            return response;
         }
-        return response;
     }
 
     suggestedQueries(headers, input) {
