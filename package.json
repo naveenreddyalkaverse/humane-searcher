@@ -21,12 +21,13 @@
     "performance-now": "^0.2.0"
   },
   "devDependencies": {
+    "babel-cli" : "^6.10.1",
     "babel-core": "^6.7.4",
     "babel-plugin-transform-runtime": "^6.6.0",
     "babel-preset-node5": "^11.0.1",
     "eslint": "^2.5.3",
     "eslint-config-360fy": "^1.1.2",
-    "eslint-plugin-react": "^4.2.3"
+    "eslint-plugin-react": "^5.0.1"
   },
   "eslintConfig": {
     "extends": "360fy"
