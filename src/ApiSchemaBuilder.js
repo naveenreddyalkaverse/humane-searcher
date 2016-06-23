@@ -31,7 +31,8 @@ export default function (searchConfig) {
         filter: Joi.object()// todo: these are contextual to user and type and autocomplete vs search
           .keys({
               lang: Joi.object().keys({primary: Joi.string().required(), secondary: Joi.array().items(Joi.string()).
-                        allow(null).optional()}).required()
+                        allow(null).
+                            optional()}).required()
           })
           .unknown(true)
           .required(),
@@ -47,7 +48,8 @@ export default function (searchConfig) {
         filter: Joi.object()// todo: these are contextual to user and type and autocomplete vs search
           .keys({
               lang: Joi.object().keys({primary: Joi.string().required(), secondary: Joi.array().items(Joi.string()).
-                        allow(null).optional()}).required()
+                        allow(null).
+                                optional()}).required()
           })
           .unknown(true)
           .required(),
