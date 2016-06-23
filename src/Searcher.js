@@ -568,6 +568,27 @@ class SearcherInternal {
         return this._searchInternal(headers, validatedInput, this.searchConfig.search.types, Constants.SEARCH_EVENT);
     }
 
+    search2(headers, input , minify) {
+        const validatedInput = this.validateInput(input, this.apiSchema.search);
+        return this._transform(this._searchInternal(headers, validatedInput, this.searchConfig.search, Constants.SEARCH_EVENT),minify);
+    }
+
+    _transform(response , minify){
+
+        var tran = response;
+
+        if( tran.multi==true){
+
+        }else{
+           let t =  tran.totalResults;
+            tran['code'] = t;
+            delete tran['totalResults'];
+        if(minify){
+
+        }
+        return response;
+    }
+
     suggestedQueries(headers, input) {
         // same type as autocomplete
         const validatedInput = SearcherInternal.validateInput(input, this.apiSchema.autocomplete);
@@ -707,6 +728,14 @@ export default class Searcher {
         return this.internal.search(headers, request);
     }
 
+    search2(headers, request ) {
+        return this.minSearch2.(headers, request , false);
+    }
+
+    minSearch2(headers, request , minify) {
+        return this.errorWrap(this.internal.search2(headers, request,minify));
+    }
+
     autocomplete(headers, request) {
         return this.internal.autocomplete(headers, request);
     }
@@ -744,6 +773,14 @@ export default class Searcher {
             suggestedQueries: [
                 {handler: this.suggestedQueries},
                 {handler: this.suggestedQueries, method: 'get'}
+            ],
+            'v2/search': [
+                {handler: this.search2},
+                {handler: this.search2, method: 'get'}
+            ],
+            'v2/search/minify': [
+                {handler: this.minSearch2},
+                {handler: this.minSearch2, method: 'get'}
             ],
             'explain/search': [
                 {handler: this.explainSearch},
