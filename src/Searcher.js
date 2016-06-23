@@ -345,7 +345,8 @@ class SearcherInternal {
         // build sort
         if (input.sort) {
             if (_.isArray(input.sort)) {
-                return _(input.sort).map(value => this.buildSort(value, defaultSortOrder)).filter(value => !!value).value();
+                return _(input.sort).map(value => this.buildSort(value, defaultSortOrder)).filter(value => !!value).
+                value();
             }
 
             return this.buildSort(input.sort, defaultSortOrder);
@@ -358,7 +359,8 @@ class SearcherInternal {
 
         // pick default from sort config
         if (_.isArray(sortConfigs)) {
-            return _(sortConfigs).map(config => this.buildDefaultSort(config, defaultSortOrder)).filter(config => !!config).value();
+            return _(sortConfigs).map(config => this.buildDefaultSort(config, defaultSortOrder)).filter(config => !!config).
+            value();
         }
 
         if (_.isObject(sortConfigs)) {
@@ -512,7 +514,8 @@ class SearcherInternal {
               }
 
               if (!input.type || input.type === '*') {
-                  const searchQueries = _(searchTypeConfigs).values().map(typeConfig => this.searchQuery(typeConfig, input, tokens)).value();
+                  const searchQueries = _(searchTypeConfigs).values().map(typeConfig => this.searchQuery(typeConfig, input, tokens)).
+                  value();
 
                   multiSearch = _.isArray(searchQueries) || false;
 
@@ -568,26 +571,25 @@ class SearcherInternal {
         return this._searchInternal(headers, validatedInput, this.searchConfig.search.types, Constants.SEARCH_EVENT);
     }
 
-    search2(headers, input , minify) {
+    search2(headers, input, minify) {
         const validatedInput = this.validateInput(input, this.apiSchema.search);
-        return this._transform(this._searchInternal(headers, validatedInput, this.searchConfig.search, Constants.SEARCH_EVENT),minify);
+        return this._transform(this._searchInternal(headers, validatedInput, this.searchConfig.search, Constants.SEARCH_EVENT), minify);
     }
 
-    _transform(response , minify) {
-
-        var tran = response;
-
-        if (tran.multi == true) {
-
+    _transform(response, minify) {
+        const tran = response;
+        if (tran.multi === true) {
+            // do nothing as of now
         } else {
-            let t = tran.totalResults;
-            tran['code'] = t;
-            delete tran['totalResults'];
+            const total = tran.totalResults;
+            tran.code = total;
+            delete tran.totalResults;
             if (minify) {
-
+                // do nothing
             }
             return response;
         }
+        return response;
     }
 
     suggestedQueries(headers, input) {
@@ -729,12 +731,12 @@ export default class Searcher {
         return this.internal.search(headers, request);
     }
 
-    search2(headers, request ) {
-        return this.minSearch2(headers, request , 'false');
+    search2(headers, request) {
+        return this.minSearch2(headers, request, 'false');
     }
 
-    minSearch2(headers, request , minify) {
-        return this.errorWrap(this.internal.search2(headers, request,minify));
+    minSearch2(headers, request, minify) {
+        return this.errorWrap(this.internal.search2(headers, request, minify));
     }
 
     autocomplete(headers, request) {
