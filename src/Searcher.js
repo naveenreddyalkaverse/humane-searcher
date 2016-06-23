@@ -730,7 +730,7 @@ export default class Searcher {
     }
 
     search2(headers, request ) {
-        return this.minSearch2.(headers, request , false);
+        return this.minSearch2(headers, request , 'false');
     }
 
     minSearch2(headers, request , minify) {
