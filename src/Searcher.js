@@ -3,6 +3,8 @@ import _ from 'lodash';
 import Joi from 'joi';
 import Promise from 'bluebird';
 import {EventEmitter} from 'events';
+import _qs from 'qs';
+
 
 import ESClient from './ESClient';
 
@@ -16,6 +18,7 @@ class SearcherInternal {
     constructor(config) {
         // TODO: compile config, so searcher logic has lesser checks, extend search config with default configs
         this.logLevel = config.logLevel || 'info';
+        this.baseUrl = config.baseUrl || 'http://localhost:3000/';
         this.searchConfig = SearcherInternal.validateSearchConfig(config.searchConfig);
         this.apiSchema = buildApiSchema(config.searchConfig);
         this.esClient = new ESClient(_.pick(config, ['logLevel', 'esConfig', 'redisConfig', 'redisSentinelConfig']));
@@ -501,7 +504,7 @@ class SearcherInternal {
         };
     }
 
-    _searchInternal(headers, input, searchTypeConfigs, eventName) {
+    _searchInternal(headers, input, searchTypeConfigs, eventName, version, minify) {
         let queryLanguages = null;
 
         let multiSearch = false;
@@ -549,20 +552,30 @@ class SearcherInternal {
               if (multiSearch) {
                   return this.processMultipleSearchResponse(response);
               }
-
               return this.processSingleSearchResponse(response);
           })
-          .then(response => {
-              this.eventEmitter.emit(eventName, {headers, queryData: input, queryLanguages, queryResult: response});
-
-              return response;
-          });
+            .then(response => {
+                if (!version || version === '2.0') {
+                    return this._transform(input, response, version, minify);
+                }
+                return response;
+            })
+            .then(response => {
+                this.eventEmitter.emit(eventName, {headers, queryData: input, queryLanguages, queryResult: response});
+                return response;
+            });
     }
 
     autocomplete(headers, input) {
         const validatedInput = SearcherInternal.validateInput(input, this.apiSchema.autocomplete);
 
         return this._searchInternal(headers, validatedInput, this.searchConfig.autocomplete.types, Constants.AUTOCOMPLETE_EVENT);
+    }
+
+    autocomplete2(headers, input, minify) {
+        const validatedInput = SearcherInternal.validateInput(input, this.apiSchema.autocomplete);
+
+        return this._searchInternal(headers, validatedInput, this.searchConfig.autocomplete.types, Constants.AUTOCOMPLETE_EVENT, '2.0', minify);
     }
 
     search(headers, input) {
@@ -572,24 +585,57 @@ class SearcherInternal {
     }
 
     search2(headers, input, minify) {
-        const validatedInput = this.validateInput(input, this.apiSchema.search);
-        return this._transform(this._searchInternal(headers, validatedInput, this.searchConfig.search, Constants.SEARCH_EVENT), minify);
+        const validatedInput = SearcherInternal.validateInput(input, this.apiSchema.search);
+        return this._searchInternal(headers, validatedInput, this.searchConfig.search.types, Constants.SEARCH_EVENT, '2.0', minify);
     }
 
-    _transform(response, minify) {
+    _transform(input, response, version, minify) {
         const tran = response;
-        if (tran.multi === true) {
-            // do nothing as of now
+        const total = tran.totalResults;
+
+        if (version !== '2.0') {
+            return response;
+        }
+
+        if (total === undefined || total == null) {
+            tran.code = '400';
         } else {
-            const total = tran.totalResults;
-            tran.code = total;
-            delete tran.totalResults;
+            tran.code = '200';
+        }
+
+        if (tran.multi === true) {
+            if (tran.results !== undefined) {
+                let count = 0;
+                Object.keys(tran.results).forEach(key => {
+                    count = count + tran.results[key].results.length;
+                });
+                tran.count = count;
+            }
+            tran.total = total;
+        } else {
+            if (tran.results !== undefined) {
+                tran.count = tran.results.length;
+            }
+            tran.total = total;
             if (minify) {
                 // do nothing
             }
-            return response;
         }
-        return response;
+
+        tran.requestedTime = new Date();
+
+        input.page = input.page ? (input.page + 1) : 1;
+
+        const uri = 'dhBooks/searcher/api/v2/search?';
+
+        tran.nextUrl = this.baseUrl + uri + _qs.stringify(input);
+
+        delete tran.totalResults;
+        delete tran.type;
+        delete tran.name;
+
+
+        return tran;
     }
 
     suggestedQueries(headers, input) {
@@ -732,15 +778,24 @@ export default class Searcher {
     }
 
     search2(headers, request) {
-        return this.minSearch2(headers, request, 'false');
+        return this.internal.search2(headers, request, false);
     }
 
-    minSearch2(headers, request, minify) {
-        return this.errorWrap(this.internal.search2(headers, request, minify));
+    minSearch2(headers, request) {
+        request.type = 'book';
+        return this.internal.search2(headers, request, true);
     }
 
     autocomplete(headers, request) {
         return this.internal.autocomplete(headers, request);
+    }
+
+    autocomplete2(headers, request) {
+        return this.internal.autocomplete2(headers, request, false);
+    }
+
+    minAutocomplete2(headers, request) {
+        return this.internal.autocomplete2(headers, request, true);
     }
 
     suggestedQueries(headers, request) {
@@ -776,6 +831,14 @@ export default class Searcher {
             suggestedQueries: [
                 {handler: this.suggestedQueries},
                 {handler: this.suggestedQueries, method: 'get'}
+            ],
+            'v2/autocomplete': [
+                {handler: this.autocomplete2},
+                {handler: this.autocomplete2, method: 'get'}
+            ],
+            'v2/autocomplete/minify': [
+                {handler: this.minAutocomplete2},
+                {handler: this.minAutocomplete2, method: 'get'}
             ],
             'v2/search': [
                 {handler: this.search2},

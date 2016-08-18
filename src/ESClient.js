@@ -122,7 +122,7 @@ export default class ESClient {
           .then(query => {
               const uri = `/${query.index}/${query.type}/_search`;
 
-              //console.log('Search: ', uri, JSON.stringify(query.search));
+            //  console.log('Search: ', uri, JSON.stringify(query.search));
 
               const queryKey = md5(JSON.stringify(query.search));
               const cacheKey = `${uri}:${queryKey}`;

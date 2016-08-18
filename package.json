@@ -1,6 +1,6 @@
 {
   "name": "humane-searcher",
-  "version": "2.0.0",
+  "version": "2.0.2",
   "description": "Searcher module for Humane Discovery",
   "repository": "git@github.com:naveenreddyalkaverse/humane-searcher.git",
   "scripts": {
@@ -15,6 +15,7 @@
   "author": "Shailendra Sharma",
   "license": "MIT",
   "dependencies": {
+    "qs": "^6.1.0",
     "bluebird": "^3.3.4",
     "events": "^1.1.0",
     "humane-node-commons": "^1.1.4",
