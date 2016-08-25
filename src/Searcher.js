@@ -19,6 +19,7 @@ class SearcherInternal {
         // TODO: compile config, so searcher logic has lesser checks, extend search config with default configs
         this.logLevel = config.logLevel || 'info';
         this.baseUrl = config.baseUrl || 'http://localhost:3000/';
+        this.LB = 'IN';
         this.searchConfig = SearcherInternal.validateSearchConfig(config.searchConfig);
         this.apiSchema = buildApiSchema(config.searchConfig);
         this.esClient = new ESClient(_.pick(config, ['logLevel', 'esConfig', 'redisConfig', 'redisSentinelConfig']));
@@ -566,6 +567,25 @@ class SearcherInternal {
             });
     }
 
+    healthcheck() {
+        if (this.LB === 'IN') {
+            this.LB = 'IN';
+        } else {
+            throw new ValidationError('Out of LN', {details: {code: 'OUT_OF_LB'}});
+        }
+        return null;
+    }
+
+    healthcheckIN() {
+        this.LB = 'IN';
+        return null;
+    }
+
+    healthcheckOUT() {
+        this.LB = 'OUT';
+        return null;
+    }
+
     autocomplete(headers, input) {
         const validatedInput = SearcherInternal.validateInput(input, this.apiSchema.autocomplete);
 
@@ -628,7 +648,9 @@ class SearcherInternal {
 
         const uri = 'dhBooks/searcher/api/v2/search?';
 
-        tran.nextUrl = this.baseUrl + uri + _qs.stringify(input);
+        if (tran.count > 0) {
+            tran.nextUrl = this.baseUrl + uri + _qs.stringify(input);
+        }
 
         delete tran.totalResults;
         delete tran.type;
@@ -781,6 +803,18 @@ export default class Searcher {
         return this.internal.search2(headers, request, false);
     }
 
+    healthcheck(headers, request) {
+        return this.internal.healthcheck(headers, request);
+    }
+
+    healthcheckIN(headers, request) {
+        return this.internal.healthcheckIN(headers, request);
+    }
+
+    healthcheckOUT(headers, request) {
+        return this.internal.healthcheckOUT(headers, request);
+    }
+
     minSearch2(headers, request) {
         request.type = 'book';
         return this.internal.search2(headers, request, true);
@@ -820,6 +854,18 @@ export default class Searcher {
 
     registry() {
         return {
+            heartbeat: [
+                {handler: this.healthcheck},
+                {handler: this.healthcheck, method: 'get'}
+            ],
+            'internal/rotation/IN': [
+                {handler: this.healthcheckIN},
+                {handler: this.healthcheckIN, method: 'get'}
+            ],
+            'internal/rotation/OUT': [
+                {handler: this.healthcheckOUT},
+                {handler: this.healthcheckOUT, method: 'get'}
+            ],
             autocomplete: [
                 {handler: this.autocomplete},
                 {handler: this.autocomplete, method: 'get'}
